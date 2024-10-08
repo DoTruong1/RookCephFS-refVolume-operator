@@ -1,0 +1,23 @@
+# permissions for end users to view rookcephfsrefvols.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: rookcephfs-refvolume-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: rookcephfsrefvol-viewer-role
+rules:
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols/status
+  verbs:
+  - get

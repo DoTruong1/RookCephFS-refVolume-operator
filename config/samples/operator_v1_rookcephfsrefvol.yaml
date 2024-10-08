@@ -1,0 +1,10 @@
+apiVersion: operator.dotv.home.arpa/v1
+kind: RookCephFSRefVol
+metadata:
+  labels:
+    app.kubernetes.io/name: rookcephfs-refvolume-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: rookcephfsrefvol-sample
+spec:
+  pvcName: test
+  # TODO(user): Add fields here

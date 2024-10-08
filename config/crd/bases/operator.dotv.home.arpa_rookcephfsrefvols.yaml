@@ -1,0 +1,65 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: rookcephfsrefvols.operator.dotv.home.arpa
+spec:
+  group: operator.dotv.home.arpa
+  names:
+    kind: RookCephFSRefVol
+    listKind: RookCephFSRefVolList
+    plural: rookcephfsrefvols
+    singular: rookcephfsrefvol
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: RookCephFSRefVol is the Schema for the rookcephfsrefvols API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
+            properties:
+              pvcName:
+                description: |-
+                  Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
+                  Tên của PVC muốn tham chiếu
+                type: string
+              volumeTemplates:
+                properties:
+                  name:
+                    description: Standard object's metadata.
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - pvcName
+            type: object
+          status:
+            description: RookCephFSRefVolStatus defines the observed state of RookCephFSRefVol
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- operator_v1_rookcephfsrefvol.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
