@@ -26,6 +26,7 @@ import (
 
 	operatorv1 "github.com/DoTruong1/RookCephFS-refVolume-operator.git/api/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // RookCephFSRefVolReconciler reconciles a RookCephFSRefVol object
@@ -77,7 +78,7 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	sourcePvcName := &rookcephfsrefvols.Spec.PvcName
 
 	var persistentVolumeClaim corev1.PersistentVolumeClaim
-	var PersistentVolume corev1.PersistentVolume
+	// var PersistentVolume corev1.PersistentVolume
 
 	if err := r.Get(ctx, client.ObjectKey{
 		Namespace: req.Namespace,
@@ -94,18 +95,28 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	log.Info("Thông tin PVC", "Volume name", persistentVolumeClaim.Spec.VolumeName)
 
 	SourcePvName := &persistentVolumeClaim.Spec.VolumeName
-	if err := r.Get(ctx, client.ObjectKey{
-		Name: *SourcePvName,
-	}, &PersistentVolume); err != nil {
+	pv, err := getSourcePvManifest(r, ctx, SourcePvName)
+
+	if err != nil {
 		log.Error(err, "unable to fetch source PersistentVolume")
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
-		return ctrl.Result{}, client.IgnoreNotFound(err)
 
 	}
-	// TODO(user): your logic here
-	log.Info("Thông tin PV", "ClaimRef", PersistentVolume.Spec.ClaimRef)
+
+	if pv != nil {
+		log.Info("Thong tin PV", "PV info: ", pv.Name)
+
+		refVolumeManifest := buildNewRefVolumeManifest(pv)
+
+		err := r.Create(ctx, refVolumeManifest)
+
+		if err != nil {
+			log.Error(err, "Có lỗi xảy ra khi tạo ref volume")
+			// we'll ignore not-found errors, since they can't be fixed by an immediate
+			// requeue (we'll need to wait for a new notification), and we can get them
+			// on deleted requests.
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -114,4 +125,40 @@ func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1.RookCephFSRefVol{}). //specifies the type of resource to watch
 		Complete(r)
+}
+
+func getSourcePvManifest(r *RookCephFSRefVolReconciler, ctx context.Context, originalPvName *string) (*corev1.PersistentVolume, error) {
+	var PersistentVolume corev1.PersistentVolume
+	if err := r.Get(ctx, client.ObjectKey{
+		Name: *originalPvName,
+	}, &PersistentVolume); err != nil {
+		// we'll ignore not-found errors, since they can't be fixed by an immediate
+		// requeue (we'll need to wait for a new notification), and we can get them
+
+		return nil, client.IgnoreNotFound(err) // on deleted requests.
+
+	}
+	// TODO(user): your logic here
+	return &PersistentVolume, nil
+}
+
+func buildNewRefVolumeManifest(originalPv *corev1.PersistentVolume) *corev1.PersistentVolume {
+	newPV := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-new-pv",
+			Labels: map[string]string{
+				"original-data-source": originalPv.Name,
+			},
+		},
+		Spec: *originalPv.Spec.DeepCopy(),
+	}
+	if newPV.Spec.PersistentVolumeSource.CSI != nil {
+		newPV.Spec.ClaimRef = nil
+		newPV.Spec.PersistentVolumeSource.CSI.NodeStageSecretRef.Name = "rook-csi-cephfs-node-user"
+		newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["staticVolume"] = "true"
+		newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["rootPath"] = newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["subvolumePath"]
+		newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle = newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle + "-" + newPV.Name
+		newPV.Spec.PersistentVolumeReclaimPolicy = "Retain"
+	}
+	return newPV
 }

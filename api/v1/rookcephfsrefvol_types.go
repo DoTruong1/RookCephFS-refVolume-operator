@@ -33,7 +33,7 @@ type RookCephFSRefVolSpec struct {
 	PvcName string `json:"pvcName"`
 
 	// +optional
-	VolumeTemplates PersistentVolume `json:"volumeTemplates"`
+	// VolumeTemplates PersistentVolume `json:"volumeTemplates"`
 }
 
 // RookCephFSRefVolStatus defines the observed state of RookCephFSRefVol
@@ -61,11 +61,6 @@ type RookCephFSRefVolList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []RookCephFSRefVol `json:"items"`
-}
-
-type PersistentVolume struct {
-	// Standard object's metadata.
-	Name string `json:"name"`
 }
 
 func init() {

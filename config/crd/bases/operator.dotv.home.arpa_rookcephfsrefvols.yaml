@@ -44,14 +44,6 @@ spec:
                   Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
                   Tên của PVC muốn tham chiếu
                 type: string
-              volumeTemplates:
-                properties:
-                  name:
-                    description: Standard object's metadata.
-                    type: string
-                required:
-                - name
-                type: object
             required:
             - pvcName
             type: object

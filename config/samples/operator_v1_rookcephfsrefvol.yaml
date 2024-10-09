@@ -6,5 +6,5 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: rookcephfsrefvol-sample
 spec:
-  pvcName: test
+  pvcName: cephfs-pvc
   # TODO(user): Add fields here
