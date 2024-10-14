@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	operatorv1 "github.com/DoTruong1/RookCephFS-refVolume-operator.git/api/v1"
@@ -76,6 +77,29 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	sourcePvcName := &rookcephfsrefvols.Spec.PvcName
+	finalizerName := "operator.dotv.home.arpa/finalizer"
+
+	// Handle delete ###
+	// examine DeletionTimestamp to determine if object is under deletion
+	if rookcephfsrefvols.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted, so if it does not have our finalizer,
+		// then lets add the finalizer and update the object. This is equivalent
+		// to registering our finalizer.
+		if !controllerutil.ContainsFinalizer(&rookcephfsrefvols, finalizerName) {
+			controllerutil.AddFinalizer(&rookcephfsrefvols, finalizerName)
+			if err := r.Update(ctx, &rookcephfsrefvols); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// if the object is being deleted
+		if controllerutil.ContainsFinalizer(&rookcephfsrefvols, finalizerName) {
+			if err := r.deleteExternalPv(&rookcephfsrefvols); err != nil {
+
+			}
+		}
+	}
+	// End handle delete ###
 
 	var persistentVolumeClaim corev1.PersistentVolumeClaim
 	// var PersistentVolume corev1.PersistentVolume
@@ -105,7 +129,7 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if pv != nil {
 		log.Info("Thong tin PV", "PV info: ", pv.Name)
 
-		refVolumeManifest := buildNewRefVolumeManifest(pv)
+		refVolumeManifest := r.buildNewRefVolumeManifest(pv, &rookcephfsrefvols)
 
 		err := r.Create(ctx, refVolumeManifest)
 
@@ -142,7 +166,7 @@ func getSourcePvManifest(r *RookCephFSRefVolReconciler, ctx context.Context, ori
 	return &PersistentVolume, nil
 }
 
-func buildNewRefVolumeManifest(originalPv *corev1.PersistentVolume) *corev1.PersistentVolume {
+func (r *RookCephFSRefVolReconciler) buildNewRefVolumeManifest(originalPv *corev1.PersistentVolume, rookCephFSRefVol *operatorv1.RookCephFSRefVol) *corev1.PersistentVolume {
 	newPV := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-new-pv",
@@ -160,5 +184,32 @@ func buildNewRefVolumeManifest(originalPv *corev1.PersistentVolume) *corev1.Pers
 		newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle = newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle + "-" + newPV.Name
 		newPV.Spec.PersistentVolumeReclaimPolicy = "Retain"
 	}
+	controllerutil.SetControllerReference(rookCephFSRefVol, newPV, r.Scheme)
 	return newPV
 }
+
+func (r *RookCephFSRefVolReconciler) deleteExternalPv(rookCephFSRefVol *operatorv1.RookCephFSRefVol) error {
+	// TO DO:
+	// get all pv associate with the root pv
+	// check its status? delete able ()
+	return nil
+}
+
+// func containsString(slice []string, s string) bool {
+// 	for _, item := range slice {
+// 		if item == s {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
+
+// func removeString(slice []string, s string) (result []string) {
+// 	for _, item := range slice {
+// 		if item == s {
+// 			continue
+// 		}
+// 		result = append(result, item)
+// 	}
+// 	return
+// }
