@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"time"
 
+	"golang.org/x/exp/rand"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,6 +31,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 // RookCephFSRefVolReconciler reconciles a RookCephFSRefVol object
 type RookCephFSRefVolReconciler struct {
@@ -95,7 +99,13 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		// if the object is being deleted
 		if controllerutil.ContainsFinalizer(&rookcephfsrefvols, finalizerName) {
 			if err := r.deleteExternalPv(&rookcephfsrefvols); err != nil {
+				return ctrl.Result{}, err
+			}
 
+			controllerutil.RemoveFinalizer(&rookcephfsrefvols, finalizerName)
+
+			if err := r.Update(ctx, &rookcephfsrefvols); err != nil {
+				return ctrl.Result{}, err
 			}
 		}
 	}
@@ -148,7 +158,17 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1.RookCephFSRefVol{}). //specifies the type of resource to watch
+		Owns(&corev1.PersistentVolume{}).
 		Complete(r)
+}
+
+func generateRandomString() string {
+	rand.Seed(uint64(time.Now().UnixNano()))
+	b := make([]byte, 6)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }
 
 func getSourcePvManifest(r *RookCephFSRefVolReconciler, ctx context.Context, originalPvName *string) (*corev1.PersistentVolume, error) {
@@ -167,9 +187,10 @@ func getSourcePvManifest(r *RookCephFSRefVolReconciler, ctx context.Context, ori
 }
 
 func (r *RookCephFSRefVolReconciler) buildNewRefVolumeManifest(originalPv *corev1.PersistentVolume, rookCephFSRefVol *operatorv1.RookCephFSRefVol) *corev1.PersistentVolume {
+	newPvPrefix := "-" + rookCephFSRefVol.ObjectMeta.Name + "-" + rookCephFSRefVol.ObjectMeta.Namespace
 	newPV := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-new-pv",
+			Name: originalPv.Name + newPvPrefix,
 			Labels: map[string]string{
 				"original-data-source": originalPv.Name,
 			},
@@ -181,7 +202,7 @@ func (r *RookCephFSRefVolReconciler) buildNewRefVolumeManifest(originalPv *corev
 		newPV.Spec.PersistentVolumeSource.CSI.NodeStageSecretRef.Name = "rook-csi-cephfs-node-user"
 		newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["staticVolume"] = "true"
 		newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["rootPath"] = newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["subvolumePath"]
-		newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle = newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle + "-" + newPV.Name
+		newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle = newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle + newPvPrefix
 		newPV.Spec.PersistentVolumeReclaimPolicy = "Retain"
 	}
 	controllerutil.SetControllerReference(rookCephFSRefVol, newPV, r.Scheme)
