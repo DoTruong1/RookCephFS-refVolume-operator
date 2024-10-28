@@ -23,6 +23,13 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+type RookCephFSRefVolState string
+
+const (
+	Ok      RookCephFSRefVolState = "Ok"
+	Missing RookCephFSRefVolState = "Missing"
+)
+
 // RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
 type RookCephFSRefVolSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -40,6 +47,7 @@ type RookCephFSRefVolSpec struct {
 type RookCephFSRefVolStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	State RookCephFSRefVolState `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
