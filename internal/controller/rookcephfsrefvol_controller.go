@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/go-logr/logr"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,8 +44,9 @@ type RookCephFSRefVolReconciler struct {
 }
 
 var (
-	finalizerName = "operator.dotv.home.arpa/finalizer"
-	pvOwnerKey    = ".metadata.controller"
+	finalizerName  = "operator.dotv.home.arpa/finalizer"
+	pvOwnerKey     = ".metadata.controller"
+	controllerName = "RookCephFSController"
 )
 
 // +kubebuilder:rbac:groups=operator.dotv.home.arpa,resources=rookcephfsrefvols,verbs=get;list;watch;create;update;patch;delete
@@ -75,6 +78,7 @@ var (
 func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
+	log.Info("RookeCephFSRefVol controller triggerd")
 	var rookcephfsrefvol operatorv1.RookCephFSRefVol
 
 	// fetch toàn bộ các rookcephfsrefvol
@@ -97,13 +101,17 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if !controllerutil.ContainsFinalizer(&rookcephfsrefvol, finalizerName) {
 			controllerutil.AddFinalizer(&rookcephfsrefvol, finalizerName)
 			if err := r.Update(ctx, &rookcephfsrefvol); err != nil {
+				log.Error(err, "Gặp lỗi trong quá trình thêm finalizers của tài nguyên RookCephFSVol")
 				return ctrl.Result{}, err
 			}
 		}
 	} else {
 		// if the object is being deleted
+		log.Info("Có yêu cầu xoá! Proceeding to cleanup the finalizers...")
 		if controllerutil.ContainsFinalizer(&rookcephfsrefvol, finalizerName) {
-			if err := r.onDelte(&rookcephfsrefvol); err != nil {
+			// Thực hiện xoá
+			if err := r.onDelete(&rookcephfsrefvol); err != nil {
+				log.Error(err, "Gặp lỗi trong quá trình  tài nguyên RookCephFSVol")
 				return ctrl.Result{}, err
 			}
 
@@ -115,12 +123,26 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	// list all child pv
-	var persistentvolumes corev1.PersistentVolumeList
-	if err := r.List(ctx, &persistentvolumes, client.MatchingFields{pvOwnerKey: rookcephfsrefvol.Name}); err != nil {
-		log.Error(err, "unable to fetch pvs created by controller")
+	originalPv, err := r.getSourcePersistentVolume(ctx, log, &rookcephfsrefvol)
+	// check if desiredPv is alreay created
+
+	desiredPv := r.buildRefVolumeManifest(originalPv, &rookcephfsrefvol)
+	foundedPv := &corev1.PersistentVolume{}
+	if err := r.Get(ctx, client.ObjectKey{
+		Name: rookcephfsrefvol.Name + "-" + rookcephfsrefvol.Namespace,
+	}, foundedPv); err != nil {
+		if errors.IsNotFound(err) {
+			// Tạo object nếu chưa có
+			return ctrl.Result{}, r.Create(ctx, desiredPv)
+		}
 		return ctrl.Result{}, err
 	}
+	// list all child pv
+	// var persistentvolumes corev1.PersistentVolumeList
+	// if err := r.List(ctx, &persistentvolumes, client.MatchingFields{pvOwnerKey: rookcephfsrefvol.Name}); err != nil {
+	// 	log.Error(err, "unable to fetch pvs created by controller")
+	// 	return ctrl.Result{}, err
+	// }
 
 	// End handle delete ###
 
@@ -132,6 +154,7 @@ func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1.RookCephFSRefVol{}). //specifies the type of resource to watch
 		Owns(&corev1.PersistentVolume{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
 		Complete(r)
 }
 
@@ -159,13 +182,14 @@ func getSourcePvManifest(r *RookCephFSRefVolReconciler, ctx context.Context, ori
 	return &PersistentVolume, nil
 }
 
-func (r *RookCephFSRefVolReconciler) buildNewRefVolumeManifest(originalPv *corev1.PersistentVolume, rookCephFSRefVol *operatorv1.RookCephFSRefVol) *corev1.PersistentVolume {
+func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.PersistentVolume, rookCephFSRefVol *operatorv1.RookCephFSRefVol) *corev1.PersistentVolume {
 	newPvPrefix := "-" + rookCephFSRefVol.ObjectMeta.Name + "-" + rookCephFSRefVol.ObjectMeta.Namespace
 	newPV := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: originalPv.Name + newPvPrefix,
+			Name: rookCephFSRefVol.Name + "-" + rookCephFSRefVol.Namespace,
 			Labels: map[string]string{
 				"original-data-source": originalPv.Name,
+				"created-by":           controllerName,
 			},
 		},
 		Spec: *originalPv.Spec.DeepCopy(),
@@ -178,11 +202,12 @@ func (r *RookCephFSRefVolReconciler) buildNewRefVolumeManifest(originalPv *corev
 		newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle = newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle + newPvPrefix
 		newPV.Spec.PersistentVolumeReclaimPolicy = "Retain"
 	}
+	// set ownerRef từ CR đến persistent volume
 	controllerutil.SetControllerReference(rookCephFSRefVol, newPV, r.Scheme)
 	return newPV
 }
 
-func (r *RookCephFSRefVolReconciler) onDelte(rookCephFSRefVol *operatorv1.RookCephFSRefVol) error {
+func (r *RookCephFSRefVolReconciler) onDelete(rookCephFSRefVol *operatorv1.RookCephFSRefVol) error {
 	// We handle deletions differently depending on whether _one_ anchor is being deleted (i.e., the
 	// user wants to delete the namespace) or whether the Anchor CRD is being deleted, which usually
 	// means HNC is being uninstalled and we shouldn't delete _any_ namespaces.
@@ -193,47 +218,47 @@ func (r *RookCephFSRefVolReconciler) onDelte(rookCephFSRefVol *operatorv1.RookCe
 	return nil
 }
 
-func (r *RookCephFSRefVolReconciler) createRookCephFSPersistentVolume(ctx context.Context, log logr.Logger) error {
+// func (r *RookCephFSRefVolReconciler) createRookCephFSPersistentVolume(ctx context.Context, log logr.Logger) error {
 
-	log.Info("Thông tin PVC", "Volume name", persistentVolumeClaim.Spec.VolumeName)
+// 	log.Info("Thông tin PVC", "Volume name", persistentVolumeClaim.Spec.VolumeName)
 
-	SourcePvName := &persistentVolumeClaim.Spec.VolumeName
-	pv, err := getSourcePvManifest(r, ctx, SourcePvName)
+// 	SourcePvName := &persistentVolumeClaim.Spec.VolumeName
+// 	pv, err := getSourcePvManifest(r, ctx, SourcePvName)
 
-	if err != nil {
-		log.Error(err, "unable to fetch source PersistentVolume")
+// 	if err != nil {
+// 		log.Error(err, "unable to fetch source PersistentVolume")
 
-	}
+// 	}
 
-	if pv != nil {
-		log.Info("Thong tin PV", "PV info: ", pv.Name)
+// 	if pv != nil {
+// 		log.Info("Thong tin PV", "PV info: ", pv.Name)
 
-		refVolumeManifest := r.buildNewRefVolumeManifest(pv, &rookcephfsrefvol)
+// 		refVolumeManifest := r.buildNewRefVolumeManifest(pv, &rookcephfsrefvol)
 
-		err := r.Create(ctx, refVolumeManifest)
+// 		err := r.Create(ctx, refVolumeManifest)
 
-		if err != nil {
-			log.Error(err, "Có lỗi xảy ra khi tạo ref volume")
-			// we'll ignore not-found errors, since they can't be fixed by an immediate
-			// requeue (we'll need to wait for a new notification), and we can get them
-			// on deleted requests.
-			return client.IgnoreNotFound(err)
-		}
-	}
-	inst.ObjectMeta.Name = nm
-	metadata.SetAnnotation(inst, api.SubnamespaceOf, pnm)
+// 		if err != nil {
+// 			log.Error(err, "Có lỗi xảy ra khi tạo ref volume")
+// 			// we'll ignore not-found errors, since they can't be fixed by an immediate
+// 			// requeue (we'll need to wait for a new notification), and we can get them
+// 			// on deleted requests.
+// 			return client.IgnoreNotFound(err)
+// 		}
+// 	}
+// 	inst.ObjectMeta.Name = nm
+// 	metadata.SetAnnotation(inst, api.SubnamespaceOf, pnm)
 
-	// It's safe to use create here since if the namespace is created by someone
-	// else while this reconciler is running, returning an error will trigger a
-	// retry. The reconciler will set the 'Conflict' state instead of recreating
-	// this namespace. All other transient problems should trigger a retry too.
-	log.Info("Creating subnamespace")
-	if err := r.Create(ctx, inst); err != nil {
-		log.Error(err, "While creating subnamespace")
-		return err
-	}
-	return nil
-}
+// 	// It's safe to use create here since if the namespace is created by someone
+// 	// else while this reconciler is running, returning an error will trigger a
+// 	// retry. The reconciler will set the 'Conflict' state instead of recreating
+// 	// this namespace. All other transient problems should trigger a retry too.
+// 	log.Info("Creating subnamespace")
+// 	if err := r.Create(ctx, inst); err != nil {
+// 		log.Error(err, "While creating subnamespace")
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func (r *RookCephFSRefVolReconciler) getPersistentVolumeClaim(ctx context.Context, log logr.Logger, pvcName string, namespace string) (*corev1.PersistentVolumeClaim, error) {
 	persistentVolumeClaim := &corev1.PersistentVolumeClaim{}
@@ -254,12 +279,17 @@ func (r *RookCephFSRefVolReconciler) getPersistentVolumeClaim(ctx context.Contex
 	return persistentVolumeClaim, nil
 }
 
-func (r *RookCephFSRefVolReconciler) getSourcePersistentVolume(ctx context.Context, log logr.Logger, sourcePvName string) (*corev1.PersistentVolume, error) {
+func (r *RookCephFSRefVolReconciler) getSourcePersistentVolume(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol) (*corev1.PersistentVolume, error) {
 	persistentVolume := &corev1.PersistentVolume{}
 	// var PersistentVolume corev1.PersistentVolume
+	persistentVolumeClaim, err := r.getPersistentVolumeClaim(ctx, log, rookCephFSRefVol.Spec.PvcName, rookCephFSRefVol.Namespace)
+
+	if err != nil {
+		return &corev1.PersistentVolume{}, err
+	}
 
 	if err := r.Get(ctx, client.ObjectKey{
-		Name: sourcePvName,
+		Name: persistentVolumeClaim.Spec.VolumeName,
 	}, persistentVolume); err != nil {
 		log.Error(err, "unable to fetch source PersistentVolumeClaim")
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
@@ -278,3 +308,12 @@ func (r *RookCephFSRefVolReconciler) deletePersistentVolume(ctx context.Context,
 	}
 	return nil
 }
+
+// func (r *RookCephFSRefVolReconciler) handlePersistentVolumeEvent(persistentVolume client.Object) []reconcile.Request {
+// 	labels := persistentVolume.GetLabels()
+// 	if val, is_created_by_controller := labels["created-by"]; is_created_by_controller || val != controllerName {
+// 		return []reconcile.Request{}
+// 	}
+// 	// doing sth with pv
+
+// }
