@@ -125,7 +125,10 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	originalPv, err := r.getSourcePersistentVolume(ctx, log, &rookcephfsrefvol)
 	// check if desiredPv is alreay created
-
+	if err != nil {
+		log.Error(err, "Gặp lỗi trong quá trình lấy manifest từ pv gốc")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 	desiredPv := r.buildRefVolumeManifest(originalPv, &rookcephfsrefvol)
 	foundedPv := &corev1.PersistentVolume{}
 	if err := r.Get(ctx, client.ObjectKey{

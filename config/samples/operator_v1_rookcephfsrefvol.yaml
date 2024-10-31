@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/name: rookcephfs-refvolume-operator
     app.kubernetes.io/managed-by: kustomize
-  name: rookcephfsrefvol-sample
+  name: sample2
 spec:
   pvcName: cephfs-pvc
   # TODO(user): Add fields here

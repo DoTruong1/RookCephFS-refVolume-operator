@@ -49,6 +49,12 @@ spec:
             type: object
           status:
             description: RookCephFSRefVolStatus defines the observed state of RookCephFSRefVol
+            properties:
+              status:
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                type: string
             type: object
         type: object
     served: true
