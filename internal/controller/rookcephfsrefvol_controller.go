@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -123,31 +124,36 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
+	log.Info("Bắt đầu quá trình thực hiện tạo Pv cho RookCephFSRefVol: ", rookcephfsrefvol.Name)
+
 	originalPv, err := r.getSourcePersistentVolume(ctx, log, &rookcephfsrefvol)
 	// check if desiredPv is alreay created
 	if err != nil {
 		log.Error(err, "Gặp lỗi trong quá trình lấy manifest từ pv gốc")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	desiredPv := r.buildRefVolumeManifest(originalPv, &rookcephfsrefvol)
 	foundedPv := &corev1.PersistentVolume{}
 	if err := r.Get(ctx, client.ObjectKey{
 		Name: rookcephfsrefvol.Name + "-" + rookcephfsrefvol.Namespace,
-	}, foundedPv); err != nil {
+	}, foundedPv); err != nil && errors.IsNotFound(err) {
 		if errors.IsNotFound(err) {
 			// Tạo object nếu chưa có
-			return ctrl.Result{}, r.Create(ctx, desiredPv)
+			desiredPv := r.buildRefVolumeManifest(originalPv, &rookcephfsrefvol)
+			log.Info("Chuẩn bị khởi tạo PersistenVolume", "PV.Namespace", desiredPv.Name)
+			if err := r.Create(ctx, desiredPv); err != nil {
+				log.Error(err, "Gặp lỗi khi tạo PersistenVolume", desiredPv.Name)
+				return ctrl.Result{}, err
+			}
+			// Trigger lại reconcile để đảm bảo Pv được tạo
+			return ctrl.Result{RequeueAfter: time.Minute}, r.Create(ctx, desiredPv)
+		} else if err != nil {
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
 	}
-	// list all child pv
-	// var persistentvolumes corev1.PersistentVolumeList
-	// if err := r.List(ctx, &persistentvolumes, client.MatchingFields{pvOwnerKey: rookcephfsrefvol.Name}); err != nil {
-	// 	log.Error(err, "unable to fetch pvs created by controller")
-	// 	return ctrl.Result{}, err
-	// }
 
-	// End handle delete ###
+	// Reconcile PV
+
+	// UPDATE CR Status
 
 	return ctrl.Result{}, nil
 }
@@ -205,7 +211,7 @@ func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.P
 		newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle = newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle + newPvPrefix
 		newPV.Spec.PersistentVolumeReclaimPolicy = "Retain"
 	}
-	// set ownerRef từ CR đến persistent volume
+	// set parent child ownership
 	controllerutil.SetControllerReference(rookCephFSRefVol, newPV, r.Scheme)
 	return newPV
 }
@@ -309,6 +315,10 @@ func (r *RookCephFSRefVolReconciler) deletePersistentVolume(ctx context.Context,
 		log.Error(err, "While deleting ref volume")
 		return err
 	}
+	return nil
+}
+
+func (r *RookCephFSRefVolReconciler) getRootPV(ctx context.Context, log logr.Logger, inst *corev1.PersistentVolume) error {
 	return nil
 }
 

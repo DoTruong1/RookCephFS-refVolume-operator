@@ -38,7 +38,8 @@ type RookCephFSRefVolSpec struct {
 	// Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
 	// Tên của PVC muốn tham chiếu
 	PvcName string `json:"pvcName"`
-
+	// RookNameSpace
+	// clientSecretName
 	// +optional
 	// VolumeTemplates PersistentVolume `json:"volumeTemplates"`
 }
@@ -48,6 +49,8 @@ type RookCephFSRefVolStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	State RookCephFSRefVolState `json:"status,omitempty"`
+	// RootPVName
+	
 }
 
 // +kubebuilder:object:root=true
