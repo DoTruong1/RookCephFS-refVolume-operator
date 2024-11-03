@@ -9,6 +9,7 @@ rules:
   resources:
   - persistentvolumeclaims
   - persistentvolumes
+  - persistentvolumes/status
   verbs:
   - create
   - delete
@@ -21,7 +22,6 @@ rules:
   - ""
   resources:
   - persistentvolumeclaims/status
-  - persistentvolumes/status
   verbs:
   - get
 - apiGroups:
