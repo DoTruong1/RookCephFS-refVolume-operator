@@ -26,8 +26,18 @@ import (
 type RookCephFSRefVolState string
 
 const (
-	Ok      RookCephFSRefVolState = "Ok"
+	MetaGroup = "operator.dotv.home.arpa"
+	// PV đã được tạo Ok
+	Ok RookCephFSRefVolState = "Ok"
+	// PV chưa được tạo
 	Missing RookCephFSRefVolState = "Missing"
+	// Conflict trong trường hợp trùng tên PV
+	Conflict RookCephFSRefVolState = "Conflict"
+	// ? Có trường hợp nào là Parent not found không?
+	ParentNotFound RookCephFSRefVolState = "ParentNotFound"
+
+	CreatedBy       = MetaGroup + "/created-by"
+	SourceNameSpace = MetaGroup + "/sourceNamespace"
 )
 
 // RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
@@ -38,8 +48,7 @@ type RookCephFSRefVolSpec struct {
 	// Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
 	// Tên của PVC muốn tham chiếu
 	PvcName string `json:"pvcName"`
-	// RookNameSpace
-	// clientSecretName
+	// userSecretName string `json:"userSecretName,omitempty"`
 	// +optional
 	// VolumeTemplates PersistentVolume `json:"volumeTemplates"`
 }
@@ -48,21 +57,21 @@ type RookCephFSRefVolSpec struct {
 type RookCephFSRefVolStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	State RookCephFSRefVolState `json:"status,omitempty"`
+	State                  RookCephFSRefVolState `json:"state,omitempty"`
+	ParentPersistentVolume string                `json:"parentPersistentVolume"`
 	// RootPVName
-	
+
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
 // RookCephFSRefVol is the Schema for the rookcephfsrefvols API
 type RookCephFSRefVol struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   RookCephFSRefVolSpec   `json:"spec,omitempty"`
-	Status RookCephFSRefVolStatus `json:"status,omitempty"`
+	Status RookCephFSRefVolStatus `json:"state,omitempty"`
 }
 
 // +kubebuilder:object:root=true
