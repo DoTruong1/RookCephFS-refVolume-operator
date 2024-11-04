@@ -14,7 +14,11 @@ spec:
     singular: rookcephfsrefvol
   scope: Cluster
   versions:
-  - name: v1
+  - additionalPrinterColumns:
+    - jsonPath: .status.state
+      name: State
+      type: string
+    name: v1
     schema:
       openAPIV3Schema:
         description: RookCephFSRefVol is the Schema for the rookcephfsrefvols API
@@ -39,6 +43,8 @@ spec:
           spec:
             description: RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
             properties:
+              cephFsUserSecretName:
+                type: string
               namespace:
                 type: string
               pvcName:
@@ -47,10 +53,11 @@ spec:
                   Tên của PVC muốn tham chiếu
                 type: string
             required:
+            - cephFsUserSecretName
             - namespace
             - pvcName
             type: object
-          state:
+          status:
             description: RookCephFSRefVolStatus defines the observed state of RookCephFSRefVol
             properties:
               parentPersistentVolume:

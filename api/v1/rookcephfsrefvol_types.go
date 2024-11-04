@@ -36,8 +36,9 @@ const (
 	// ? Có trường hợp nào là Parent not found không?
 	ParentNotFound RookCephFSRefVolState = "ParentNotFound"
 
-	CreatedBy       = MetaGroup + "/created-by"
-	SourceNameSpace = MetaGroup + "/sourceNamespace"
+	CreatedBy = MetaGroup + "/created-by"
+	Parent    = MetaGroup + "/parent"
+	IsParent  = MetaGroup + "/is-parent"
 )
 
 // RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
@@ -47,9 +48,9 @@ type RookCephFSRefVolSpec struct {
 
 	// Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
 	// Tên của PVC muốn tham chiếu
-	PvcName   string `json:"pvcName"`
-	Namespace string `json:"namespace"`
-
+	PvcName              string `json:"pvcName"`
+	Namespace            string `json:"namespace"`
+	CephFsUserSecretName string `json:"cephFsUserSecretName"`
 	// userSecretName string `json:"userSecretName,omitempty"`
 	// +optional
 	// VolumeTemplates PersistentVolume `json:"volumeTemplates"`
@@ -59,8 +60,8 @@ type RookCephFSRefVolSpec struct {
 type RookCephFSRefVolStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	State                  RookCephFSRefVolState `json:"state,omitempty"`
-	ParentPersistentVolume string                `json:"parentPersistentVolume"`
+	State  RookCephFSRefVolState `json:"state,omitempty"`
+	Parent string                `json:"parentPersistentVolume"`
 	// RootPVName
 
 }
@@ -68,13 +69,14 @@ type RookCephFSRefVolStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
 // RookCephFSRefVol is the Schema for the rookcephfsrefvols API
 type RookCephFSRefVol struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   RookCephFSRefVolSpec   `json:"spec,omitempty"`
-	Status RookCephFSRefVolStatus `json:"state,omitempty"`
+	Status RookCephFSRefVolStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
