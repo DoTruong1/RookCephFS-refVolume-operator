@@ -4,8 +4,9 @@ metadata:
   labels:
     app.kubernetes.io/name: rookcephfs-refvolume-operator
     app.kubernetes.io/managed-by: kustomize
-  name: sample2
+  name: test
 spec:
   pvcName: cephfs-pvc
   namespace: default
+  cephFsUserSecretName: rook-csi-cephfs-node-user
   # TODO(user): Add fields here
