@@ -12,7 +12,7 @@ spec:
     listKind: RookCephFSRefVolList
     plural: rookcephfsrefvols
     singular: rookcephfsrefvol
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1
     schema:
@@ -39,12 +39,15 @@ spec:
           spec:
             description: RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
             properties:
+              namespace:
+                type: string
               pvcName:
                 description: |-
                   Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
                   Tên của PVC muốn tham chiếu
                 type: string
             required:
+            - namespace
             - pvcName
             type: object
           state:

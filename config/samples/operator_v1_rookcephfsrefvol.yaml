@@ -7,4 +7,5 @@ metadata:
   name: sample2
 spec:
   pvcName: cephfs-pvc
+  namespace: default
   # TODO(user): Add fields here

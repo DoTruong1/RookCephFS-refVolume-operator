@@ -47,7 +47,9 @@ type RookCephFSRefVolSpec struct {
 
 	// Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
 	// Tên của PVC muốn tham chiếu
-	PvcName string `json:"pvcName"`
+	PvcName   string `json:"pvcName"`
+	Namespace string `json:"namespace"`
+
 	// userSecretName string `json:"userSecretName,omitempty"`
 	// +optional
 	// VolumeTemplates PersistentVolume `json:"volumeTemplates"`
@@ -65,6 +67,7 @@ type RookCephFSRefVolStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster
 // RookCephFSRefVol is the Schema for the rookcephfsrefvols API
 type RookCephFSRefVol struct {
 	metav1.TypeMeta   `json:",inline"`

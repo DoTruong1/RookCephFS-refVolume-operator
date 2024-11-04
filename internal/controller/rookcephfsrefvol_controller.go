@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -104,8 +106,10 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	r.updateStatus(ctx, log, &rookcephfsrefvol, foundedPV)
-
+	if err := r.updateStatus(ctx, log, &rookcephfsrefvol, foundedPV); err != nil {
+		return ctrl.Result{RequeueAfter: time.Second * 15}, err
+	}
+	// fmt.Print(rookcephfsrefvol)
 	// Handle delete ###
 	// examine DeletionTimestamp to determine if object is under deletion
 	if rookcephfsrefvol.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -129,7 +133,6 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				return ctrl.Result{Requeue: true}, err
 			}
 
-			
 			if err := r.Update(ctx, &rookcephfsrefvol); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -137,6 +140,7 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	// Tạo PV nếu chưa tạo
 	if rookcephfsrefvol.Status.State == operatorv1.Missing {
+		fmt.Println("START CREATING")
 		if err := r.createRefVolume(ctx, log, &rookcephfsrefvol); err != nil {
 			if err := r.writeInstance(ctx, log, &rookcephfsrefvol); err != nil {
 				log.Error(err, "while setting rookcephfsrefvol state", "state", operatorv1.Missing, "reason", err)
@@ -212,23 +216,39 @@ func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.P
 	// set parent child ownership
 	// fmt.Print(newPV)
 	controllerutil.SetControllerReference(rookCephFSRefVol, newPV, r.Scheme, controllerutil.WithBlockOwnerDeletion(true))
-	controllerutil.SetOwnerReference(rookCephFSRefVol, newPV, r.Scheme, controllerutil.WithBlockOwnerDeletion(true))
+	// controllerutil.SetOwnerReference(rookCephFSRefVol, newPV, r.Scheme, controllerutil.WithBlockOwnerDeletion(true))
 	return newPV
 }
 
+func (r *RookCephFSRefVolReconciler) ownObject(ctx context.Context, cr *operatorv1.RookCephFSRefVol, obj client.Object) error {
+
+	err := ctrl.SetControllerReference(cr, obj, r.Scheme)
+	if err != nil {
+		return err
+	}
+	return r.Update(ctx, obj)
+}
 func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log logr.Logger, rookCephFsRefVol *operatorv1.RookCephFSRefVol) error {
 	pv, shouldCreate := r.shouldCreateRefVol(ctx, log, rookCephFsRefVol)
 
 	if shouldCreate {
 		desiredPv := r.buildRefVolumeManifest(pv, rookCephFsRefVol)
+		err := r.ownObject(ctx, rookCephFsRefVol, desiredPv)
+
+		if err != nil {
+			log.Error(err, "Err While setting controller ref")
+			return err
+		}
 		// log.Info("Creating RefVolume", rookCephFsRefVol.Name)
 		if err := r.Create(ctx, desiredPv); err != nil {
 			log.Error(err, "Err While creating Refvolume")
 			rookCephFsRefVol.Status.State = operatorv1.Missing
-			return err
+
+			return r.Status().Update(ctx, rookCephFsRefVol)
 		}
 	}
 	rookCephFsRefVol.Status.State = operatorv1.Ok
+	r.Status().Update(ctx, rookCephFsRefVol)
 	return nil
 }
 
@@ -351,7 +371,7 @@ func (r *RookCephFSRefVolReconciler) getPersistentVolumeClaim(ctx context.Contex
 	// var PersistentVolume corev1.PersistentVolume
 
 	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: rookCephFSRefVol.Namespace,
+		Namespace: rookCephFSRefVol.Spec.Namespace,
 		Name:      rookCephFSRefVol.Spec.PvcName,
 	}, persistentVolumeClaim); err != nil {
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
@@ -414,24 +434,30 @@ func (r *RookCephFSRefVolReconciler) deletePersistentVolume(ctx context.Context,
 // 	return nil
 // }
 
-func (r *RookCephFSRefVolReconciler) updateStatus(ctx context.Context, log logr.Logger, rookcephfsRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) {
+func (r *RookCephFSRefVolReconciler) updateStatus(ctx context.Context, log logr.Logger, rookcephfsRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) error {
 
 	createdBy := refVolume.Annotations[operatorv1.CreatedBy]
 
 	switch {
 	case refVolume.Name == "":
 		// PV chưa được tạo
-		log.Info("PV associate with RookCephRefVol CRs: ", rookcephfsRefVol.Name, ", in Namespace: ", rookcephfsRefVol.Namespace, " is not created")
+		log.Info("PV associate with RookCephRefVol CRs: ", rookcephfsRefVol.Name, ", in Namespace: ", rookcephfsRefVol.Spec.Namespace, " is not created, start create one!!!")
 		rookcephfsRefVol.Status.State = operatorv1.Missing
+		if err := r.Status().Update(ctx, rookcephfsRefVol); err != nil {
+			log.Info(err.Error())
+		}
+		return nil
 	case rookcephfsRefVol.Name != createdBy && refVolume.Annotations[operatorv1.SourceNameSpace] != rookcephfsRefVol.Namespace:
 		log.Info("Conflicting When creating Pv, maybe the pv is already created by others", rookcephfsRefVol.Name)
 		rookcephfsRefVol.Status.State = operatorv1.Conflict
+		return r.Status().Update(ctx, rookcephfsRefVol)
 	default:
 		if rookcephfsRefVol.Status.State != operatorv1.Ok {
 			log.Info("Refvolume is sucessfully created", "prev state", rookcephfsRefVol.Status.State)
 
 		}
 		rookcephfsRefVol.Status.State = operatorv1.Ok
+		return r.Status().Update(ctx, rookcephfsRefVol)
 	}
 }
 
