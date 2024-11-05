@@ -19,15 +19,21 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	operatorv1 "github.com/DoTruong1/RookCephFS-refVolume-operator.git/api/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -141,7 +147,7 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 			return ctrl.Result{}, err
 		}
-	}
+	} // update reconcile code
 
 	// UPDATE CR Status
 
@@ -150,11 +156,83 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	updatePred := predicate.Funcs{
+		// Only allow updates when the spec.size of the Busybox resource changes
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// oldObj := e.ObjectOld.(*examplecomv1alpha1.Busybox)
+			// newObj := e.ObjectNew.(*examplecomv1alpha1.Busybox)
+
+			// Trigger reconciliation only if the spec.size field has changed
+			val, ok := e.ObjectNew.GetAnnotations()[operatorv1.IsParent]
+			println(e.ObjectNew.GetDeletionTimestamp().IsZero())
+			println(ok && val == "true")
+			println(ok && val == "true" && !e.ObjectNew.GetDeletionTimestamp().IsZero())
+			return ok && val == "true" && !e.ObjectNew.GetDeletionTimestamp().IsZero()
+		},
+
+		// Allow create events
+		CreateFunc: func(e event.CreateEvent) bool {
+			return false
+		},
+
+		// Allow delete events
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+			// pv := e.Object.GetAnnotations()
+
+		},
+
+		// Allow generic events (e.g., external triggers)
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1.RookCephFSRefVol{}). //specifies the type of resource to watch
 		Owns(&corev1.PersistentVolume{}).
+		Watches(
+			&corev1.PersistentVolume{},
+			handler.EnqueueRequestsFromMapFunc(r.filterParent),
+			builder.WithPredicates(updatePred),
+		).
 		// Owns(&corev1.PersistentVolumeClaim{}).
 		Complete(r)
+}
+
+func (r *RookCephFSRefVolReconciler) filterParent(ctx context.Context, pv client.Object) []ctrl.Request {
+	childrenList, err := r.fetchRefVolumeList(ctx, pv.GetName())
+
+	if err != nil && apierrors.IsNotFound(err) {
+		return []ctrl.Request{}
+	}
+
+	reqs := make([]ctrl.Request, 0, len(childrenList))
+	println("filterParent triggered - PV deleted:", pv.GetName()) // Debug log
+	// fmt -- trig
+	for _, item := range childrenList {
+		reqs = append(reqs, ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name: item.GetName(),
+			},
+		})
+	}
+	return reqs
+}
+
+func (r *RookCephFSRefVolReconciler) fetchRefVolumeList(ctx context.Context, parentPvName string) ([]operatorv1.RookCephFSRefVol, error) {
+	var matchingCRs []operatorv1.RookCephFSRefVol
+
+	var rookCephFSRefVolList operatorv1.RookCephFSRefVolList
+	if err := r.List(ctx, &rookCephFSRefVolList); err != nil {
+		return nil, err
+	}
+
+	for _, cr := range rookCephFSRefVolList.Items {
+		if cr.Status.Parent == parentPvName { // Kiểm tra điều kiện trong status
+			matchingCRs = append(matchingCRs, cr)
+		}
+	}
+	return matchingCRs, nil
 }
 
 // func generateRandomString() string {
@@ -228,7 +306,11 @@ func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log lo
 		}
 	}
 	rookCephFsRefVol.Status.State = operatorv1.Ok
+	rookCephFsRefVol.Status.Parent = pv.GetName()
 	pv.GetAnnotations()[operatorv1.IsParent] = "true"
+	// add finalizer in case cascading deleting or should I ? because, the data is being shared between PVs fate should be
+	// but for save we will add it for now
+	controllerutil.AddFinalizer(pv, finalizerName)
 	r.Update(ctx, pv)
 
 	return r.Status().Update(ctx, rookCephFsRefVol)
@@ -237,7 +319,10 @@ func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log lo
 func annotationMapping(originalPv *corev1.PersistentVolume, sourceRookCephRefVolObj *operatorv1.RookCephFSRefVol) map[string]string {
 	annotations := make(map[string]string)
 	for k, v := range originalPv.GetAnnotations() {
-		annotations[k] = v
+		if !strings.HasPrefix(k, operatorv1.MetaGroup) {
+			annotations[k] = v
+		}
+
 	}
 	annotations[operatorv1.CreatedBy] = sourceRookCephRefVolObj.Name
 	annotations[operatorv1.Parent] = originalPv.Name
@@ -249,7 +334,7 @@ func (r *RookCephFSRefVolReconciler) onDelete(ctx context.Context, log logr.Logg
 
 	// IsDeletingCRD, errr := crd.
 	switch {
-	case r.shouldDeleteRefVol(log, rookCephFSRefVol, refVolume):
+	case r.shouldDeleteRefVol(ctx, log, rookCephFSRefVol, refVolume):
 		log.Info("Deleting refVolume due to CR being deleted")
 		return r.deletePersistentVolume(ctx, log, refVolume)
 	case r.shouldRemoveFinalizer(log, rookCephFSRefVol, refVolume):
@@ -270,7 +355,7 @@ func (r *RookCephFSRefVolReconciler) onDelete(ctx context.Context, log logr.Logg
 
 }
 
-func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) bool {
+func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) bool {
 	switch rookCephFSRefVol.Status.State {
 	case operatorv1.Ok:
 		log.Info("enter check delete")
@@ -286,6 +371,7 @@ func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(log logr.Logger, rookCep
 			log.Info("The Crs is already finalized, no need to delete again", rookCephFSRefVol.Name)
 			return false
 		}
+		// isParentDeleting := r.shouldTriggerDelete(ctx, refVolume)
 		return true
 	case operatorv1.Conflict:
 		// Trường hợp confilct, không có pv nào đc bound --> k xoá
@@ -314,6 +400,12 @@ func (r *RookCephFSRefVolReconciler) shouldCreateRefVol(ctx context.Context, log
 
 	if err != nil {
 		log.Info("Err when get PersistentVolume", rookCephFSRefVol.Spec.PvcName, "Namespace", rookCephFSRefVol.Namespace, "is not existed")
+		return nil, false
+	}
+
+	if !pv.DeletionTimestamp.IsZero() {
+		log.Info("ParentPv is deleting", rookCephFSRefVol.Status.Parent, "Namespace", rookCephFSRefVol.Namespace, "is not existed")
+
 		return nil, false
 	}
 
@@ -382,6 +474,21 @@ func (r *RookCephFSRefVolReconciler) getRefVolume(ctx context.Context, log logr.
 	}
 
 	return persistentVolume, nil
+}
+
+func (r *RookCephFSRefVolReconciler) shouldTriggerDelete(ctx context.Context, refVolume *corev1.PersistentVolume) bool {
+
+	if refVolume.GetName() == "" {
+		return false
+	}
+	parentPV := &corev1.PersistentVolume{}
+
+	if err := r.Get(ctx, client.ObjectKey{
+		Name: refVolume.GetAnnotations()[operatorv1.Parent],
+	}, parentPV); err != nil {
+		return false
+	}
+	return parentPV.DeletionTimestamp.IsZero()
 }
 
 func (r *RookCephFSRefVolReconciler) getSourcePersistentVolume(ctx context.Context, log logr.Logger, parentPvName string) (*corev1.PersistentVolume, error) {
