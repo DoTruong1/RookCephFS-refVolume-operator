@@ -36,6 +36,8 @@ const (
 	// ? Có trường hợp nào là Parent not found không?
 	ParentNotFound RookCephFSRefVolState = "ParentNotFound"
 
+	ParentDeleting RookCephFSRefVolState = "ParentDeleting"
+
 	CreatedBy = MetaGroup + "/created-by"
 	Parent    = MetaGroup + "/parent"
 	IsParent  = MetaGroup + "/is-parent"
