@@ -55,7 +55,7 @@ var (
 	controllerName = "RookCephFSController"
 )
 
-// +kubebuilder:rbac:groups=operator.dotv.home.arpa,resources=rookcephfsrefvols,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:roups=operator.dotv.home.arpa,resources=rookcephfsrefvols,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=operator.dotv.home.arpa,resources=rookcephfsrefvols/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=operator.dotv.home.arpa,resources=rookcephfsrefvols/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch;create;update;patch;delete
@@ -112,7 +112,7 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 	}
-
+	// Có thể cần có cơ chế hay hơn cho việc lấy theo status
 	refVolume, err := r.getRefVolume(ctx, log, rookcephfsrefvol)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -375,7 +375,6 @@ func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(ctx context.Context, log
 	case operatorv1.ParentDeleting:
 		log.Info("Parent is deleting")
 		if refVolume.Name == "" {
-			// log.Info("No Refvolume associate, no need to delete", rookCephFSRefVol.Name)
 			return false
 		}
 		if !controllerutil.ContainsFinalizer(rookCephFSRefVol, finalizerName) {
@@ -383,6 +382,9 @@ func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(ctx context.Context, log
 			return false
 		}
 		return true
+	case operatorv1.ParentNotFound:
+		log.Info("Parent is not exists, no need to delete")
+		return false
 	case operatorv1.Ok:
 		log.Info("enter check delete")
 		// RefVol và Crs được bound với nhau, ok để xoá
@@ -566,6 +568,10 @@ func (r *RookCephFSRefVolReconciler) updateStatus(ctx context.Context, log logr.
 	case !parentPV.DeletionTimestamp.IsZero():
 		log.Info("Parent is deleting, not create one!!!")
 		rookcephfsRefVol.Status.State = operatorv1.ParentDeleting
+		r.Status().Update(ctx, rookcephfsRefVol)
+	case parentPV.Name == "":
+		log.Info("ParentPv is not existing")
+		rookcephfsRefVol.Status.State = operatorv1.ParentNotFound
 		r.Status().Update(ctx, rookcephfsRefVol)
 	case refVolume.Name == "":
 		// PV chưa được tạo
