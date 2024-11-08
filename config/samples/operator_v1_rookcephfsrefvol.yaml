@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: test
 spec:
-  pvcName: cephfs-pvc
+  pvcName: cephfs-pvc-2
   namespace: default
   cephFsUserSecretName: rook-csi-cephfs-node-user
   # TODO(user): Add fields here

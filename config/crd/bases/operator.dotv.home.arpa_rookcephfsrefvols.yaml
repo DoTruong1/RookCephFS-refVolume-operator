@@ -18,6 +18,9 @@ spec:
     - jsonPath: .status.state
       name: State
       type: string
+    - jsonPath: .status.parentPersistentVolume
+      name: Parent
+      type: string
     name: v1
     schema:
       openAPIV3Schema:
@@ -62,6 +65,8 @@ spec:
             properties:
               parentPersistentVolume:
                 type: string
+              refVolumeName:
+                type: string
               state:
                 description: |-
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -69,6 +74,7 @@ spec:
                 type: string
             required:
             - parentPersistentVolume
+            - refVolumeName
             type: object
         type: object
     served: true

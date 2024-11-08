@@ -261,9 +261,9 @@ func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.P
 	newPvPrefix := "-" + rookCephFSRefVol.ObjectMeta.Name + "-" + rookCephFSRefVol.ObjectMeta.Namespace
 	newPV := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        rookCephFSRefVol.Name + "-" + rookCephFSRefVol.Spec.Namespace + "-" + rookCephFSRefVol.Spec.PvcName,
-			Annotations: make(map[string]string),
-			Labels:      make(map[string]string),
+			GenerateName: rookCephFSRefVol.Name + "-" + rookCephFSRefVol.Spec.Namespace + "-" + rookCephFSRefVol.Spec.PvcName + "-",
+			Annotations:  make(map[string]string),
+			Labels:       make(map[string]string),
 			// {
 			// 	"parent":     originalPv.Name,
 			// 	"created-by": controllerName,
@@ -318,6 +318,7 @@ func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log lo
 		}
 		rookCephFsRefVol.Status.State = operatorv1.Ok
 		rookCephFsRefVol.Status.Parent = parentPV.GetName()
+		rookCephFsRefVol.Status.Children = desiredPv.Name
 		parentPV.GetAnnotations()[operatorv1.IsParent] = "true"
 		// add finalizer in case cascading deleting or should I ? because, the data is being shared between PVs fate should be
 		// but for save we will add it for now
@@ -488,7 +489,7 @@ func (r *RookCephFSRefVolReconciler) getRefVolume(ctx context.Context, log logr.
 	// var PersistentVolume corev1.PersistentVolume
 
 	if err := r.Get(ctx, client.ObjectKey{
-		Name: rookCephFSRefVolume.Name + "-" + rookCephFSRefVolume.Spec.Namespace + "-" + rookCephFSRefVolume.Spec.PvcName,
+		Name: rookCephFSRefVolume.Status.Children,
 	}, persistentVolume); err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "unable to fetch source PersistentVolumeClaim")

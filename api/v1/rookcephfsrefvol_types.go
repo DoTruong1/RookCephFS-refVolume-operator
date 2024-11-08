@@ -62,8 +62,9 @@ type RookCephFSRefVolSpec struct {
 type RookCephFSRefVolStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	State  RookCephFSRefVolState `json:"state,omitempty"`
-	Parent string                `json:"parentPersistentVolume"`
+	State    RookCephFSRefVolState `json:"state,omitempty"`
+	Parent   string                `json:"parentPersistentVolume"`
+	Children string                `json:"refVolumeName"`
 	// RootPVName
 
 }
@@ -72,6 +73,7 @@ type RookCephFSRefVolStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
+// +kubebuilder:printcolumn:name="Parent",type=string,JSONPath=`.status.parentPersistentVolume`
 // RookCephFSRefVol is the Schema for the rookcephfsrefvols API
 type RookCephFSRefVol struct {
 	metav1.TypeMeta   `json:",inline"`
