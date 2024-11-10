@@ -1,3 +1,4 @@
+---
 apiVersion: operator.dotv.home.arpa/v1
 kind: RookCephFSRefVol
 metadata:
@@ -6,7 +7,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: test
 spec:
-  pvcName: cephfs-pvc-2
+  pvcName: cephfs-pvc-l4trd
   namespace: default
   cephFsUserSecretName: rook-csi-cephfs-node-user
   # TODO(user): Add fields here

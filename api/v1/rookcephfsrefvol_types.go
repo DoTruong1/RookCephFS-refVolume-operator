@@ -28,19 +28,18 @@ type RookCephFSRefVolState string
 const (
 	MetaGroup = "operator.dotv.home.arpa"
 	// PV đã được tạo Ok
-	Ok RookCephFSRefVolState = "Ok"
+	Bounded RookCephFSRefVolState = "Bounded"
 	// PV chưa được tạo
 	Missing RookCephFSRefVolState = "Missing"
-	// Conflict trong trường hợp trùng tên PV
-	Conflict RookCephFSRefVolState = "Conflict"
 	// ? Có trường hợp nào là Parent not found không?
 	ParentNotFound RookCephFSRefVolState = "ParentNotFound"
-
+	//
 	ParentDeleting RookCephFSRefVolState = "ParentDeleting"
 
-	CreatedBy = MetaGroup + "/created-by"
-	Parent    = MetaGroup + "/parent"
-	IsParent  = MetaGroup + "/is-parent"
+	IsDeleting RookCephFSRefVolState = "Deleting"
+	CreatedBy                        = MetaGroup + "/created-by"
+	Parent                           = MetaGroup + "/parent"
+	IsParent                         = MetaGroup + "/is-parent"
 )
 
 // RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
