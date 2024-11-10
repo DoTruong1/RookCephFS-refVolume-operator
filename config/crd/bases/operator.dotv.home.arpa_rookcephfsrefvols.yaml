@@ -21,6 +21,9 @@ spec:
     - jsonPath: .status.parentPersistentVolume
       name: Parent
       type: string
+    - jsonPath: .status.refVolumeName
+      name: Children
+      type: string
     name: v1
     schema:
       openAPIV3Schema:

@@ -75,6 +75,7 @@ type RookCephFSRefVolStatus struct {
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
 // +kubebuilder:printcolumn:name="Parent",type=string,JSONPath=`.status.parentPersistentVolume`
+// +kubebuilder:printcolumn:name="Children",type=string,JSONPath=`.status.refVolumeName`
 // RookCephFSRefVol is the Schema for the rookcephfsrefvols API
 type RookCephFSRefVol struct {
 	metav1.TypeMeta   `json:",inline"`
