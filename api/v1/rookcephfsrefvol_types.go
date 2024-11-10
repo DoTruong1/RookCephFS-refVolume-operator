@@ -51,8 +51,11 @@ type RookCephFSRefVolSpec struct {
 
 	// Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
 	// Tên của PVC muốn tham chiếu
-	PvcName              string `json:"pvcName"`
-	Namespace            string `json:"namespace"`
+	// +required
+	PvcName string `json:"pvcName"`
+	// +optional
+	Namespace string `json:"namespace"`
+	// +kubebuilder:validation:Required
 	CephFsUserSecretName string `json:"cephFsUserSecretName"`
 	// userSecretName string `json:"userSecretName,omitempty"`
 	// +optional

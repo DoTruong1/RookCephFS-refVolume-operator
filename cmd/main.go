@@ -37,6 +37,7 @@ import (
 
 	operatorv1 "github.com/DoTruong1/RookCephFS-refVolume-operator.git/api/v1"
 	"github.com/DoTruong1/RookCephFS-refVolume-operator.git/internal/controller"
+	webhookoperatorv1 "github.com/DoTruong1/RookCephFS-refVolume-operator.git/internal/webhook/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -150,6 +151,13 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RookCephFSRefVol")
 		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookoperatorv1.SetupRookCephFSRefVolWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "RookCephFSRefVol")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 

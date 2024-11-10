@@ -60,7 +60,6 @@ spec:
                 type: string
             required:
             - cephFsUserSecretName
-            - namespace
             - pvcName
             type: object
           status:

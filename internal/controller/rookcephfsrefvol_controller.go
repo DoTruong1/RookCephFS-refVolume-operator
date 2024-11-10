@@ -258,6 +258,15 @@ func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Only allow updates when the spec.size of the Busybox resource changes
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			val, ok := e.ObjectNew.GetAnnotations()[operatorv1.IsParent]
+			// Kiểm tra nếu là đối tượng PersistentVolumeClaim (PVC)
+			if pvcNew, okPvc := e.ObjectNew.(*corev1.PersistentVolumeClaim); okPvc {
+				pvcOld, okOldPvc := e.ObjectOld.(*corev1.PersistentVolumeClaim)
+
+				// Kiểm tra điều kiện: volumeName thay đổi từ "" sang một giá trị mới
+				if okOldPvc && pvcOld.Spec.VolumeName == "" && pvcNew.Spec.VolumeName != "" {
+					return (ok && val == "true" && e.ObjectNew.GetDeletionTimestamp() != nil)
+				}
+			}
 			return (ok && val == "true" && e.ObjectNew.GetDeletionTimestamp() != nil)
 		},
 
@@ -715,7 +724,6 @@ func (r *RookCephFSRefVolReconciler) RemoveFinalizer(ctx context.Context, log lo
 
 func (r *RookCephFSRefVolReconciler) updateState(ctx context.Context, log logr.Logger, rookcephfsRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume, parentPV *corev1.PersistentVolume, parentPVC *corev1.PersistentVolumeClaim) {
 	updatedState := rookcephfsRefVol.Status.State
-
 	switch {
 	case !rookcephfsRefVol.DeletionTimestamp.IsZero() || !parentPV.DeletionTimestamp.IsZero() || !parentPVC.DeletionTimestamp.IsZero():
 		log.Info("RookCephFSRefVol is being deleted; marking state as IsDeleting")
@@ -723,6 +731,7 @@ func (r *RookCephFSRefVolReconciler) updateState(ctx context.Context, log logr.L
 	case parentPV.Name == "" || parentPVC.Name == "":
 		log.Info("Parent PV does not exist; marking RookCephFSRefVol as ParentNotFound")
 		updatedState = operatorv1.ParentNotFound
+
 		if rookcephfsRefVol.Status.Children != "" {
 			// handle case bị bỏ lại orphan cuối cùng
 			updatedState = operatorv1.IsDeleting
