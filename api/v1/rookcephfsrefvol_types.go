@@ -26,7 +26,8 @@ import (
 type RookCephFSRefVolState string
 
 const (
-	MetaGroup = "operator.dotv.home.arpa"
+	MetaGroup      = "operator.dotv.home.arpa"
+	ControllerName = "rookcephfsRefVolOperator"
 	// PV đã được tạo Ok
 	Bounded RookCephFSRefVolState = "Bounded"
 	// PV chưa được tạo
@@ -37,7 +38,8 @@ const (
 	ParentDeleting RookCephFSRefVolState = "ParentDeleting"
 
 	IsDeleting RookCephFSRefVolState = "Deleting"
-	CreatedBy                        = MetaGroup + "/created-by"
+	CreatedBy                        = MetaGroup + "/createdBy"
+	Owner                            = MetaGroup + "/owner"
 	Parent                           = MetaGroup + "/parent"
 	IsParent                         = MetaGroup + "/is-parent"
 )

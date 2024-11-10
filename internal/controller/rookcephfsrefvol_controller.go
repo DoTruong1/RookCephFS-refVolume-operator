@@ -38,6 +38,7 @@ import (
 	operatorv1 "github.com/DoTruong1/RookCephFS-refVolume-operator.git/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 )
 
 // const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -50,9 +51,10 @@ type RookCephFSRefVolReconciler struct {
 }
 
 var (
-	finalizerName = "operator.dotv.home.arpa/finalizer"
-	// pvOwnerKey     = ".metadata.controller"
+	finalizerName  = "operator.dotv.home.arpa/finalizer"
 	controllerName = "RookCephFSController"
+	pvIndexKey     = ".metadata.annotations." + operatorv1.Parent
+	crIndexKey     = ".status.parentPersistentVolume"
 )
 
 // +kubebuilder:rbac:groups=operator.dotv.home.arpa,resources=rookcephfsrefvols,verbs=get;list;watch;create;update;patch;delete
@@ -89,7 +91,7 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err := r.Get(ctx, req.NamespacedName, rookcephfsrefvol); err != nil {
 
 		if apierrors.IsNotFound(err) {
-			log.Info("[RookCephFSRefVol] Not found", "Name", rookcephfsrefvol.Name)
+			log.Info("[RookCephFSRefVol] has been deleted", "Name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
@@ -148,31 +150,67 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				return ctrl.Result{Requeue: true}, err
 			}
 		}
+
+		// handle remove parent finalizer
+		if rookcephfsrefvol.Status.State == operatorv1.IsDeleting || (controllerutil.ContainsFinalizer(parentPV, finalizerName) && controllerutil.ContainsFinalizer(targetPVC, finalizerName)) {
+			log.Info("Check If we can remove finalizer on parent PV")
+			// Update ParentPVC
+			if err := r.Get(ctx, client.ObjectKey{
+				Name:      rookcephfsrefvol.Spec.PvcName,
+				Namespace: rookcephfsrefvol.Spec.Namespace,
+			}, targetPVC); err != nil && !apierrors.IsNotFound(err) {
+
+				return ctrl.Result{}, err
+			}
+
+			if err := r.Get(ctx, client.ObjectKey{
+				Name: targetPVC.Spec.VolumeName,
+			}, parentPV); err != nil && !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+
+			var pvList corev1.PersistentVolumeList
+			var rookCephFsRefVolList operatorv1.RookCephFSRefVolList
+			if err := r.List(ctx, &pvList, client.MatchingFields{pvIndexKey: parentPV.Name}); err != nil {
+				log.Error(err, "unable to list child Jobs")
+				return ctrl.Result{}, err
+			}
+			if err := r.List(ctx, &rookCephFsRefVolList, client.MatchingFields{crIndexKey: parentPV.Name}); err != nil {
+				log.Error(err, "unable to list child Jobs")
+				return ctrl.Result{}, err
+			}
+			println("List size: ", len(pvList.Items))
+			if len(pvList.Items) == 0 {
+				log.Info("Parent dont have any child left safe to finalized")
+				controllerutil.RemoveFinalizer(parentPV, finalizerName)
+				retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+					// Perform the patch or update operation
+					return r.Update(ctx, parentPV)
+				})
+				// if err := r.Update(ctx, parentPV); err != nil {
+				// 	log.Error(err, "Failed to update parent PV after finalizer removal")
+				// 	return ctrl.Result{}, err
+				// }
+				controllerutil.RemoveFinalizer(targetPVC, finalizerName)
+				retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+					// Perform the patch or update operation
+					return r.Update(ctx, targetPVC)
+				})
+			}
+		}
 	}
 
 	//early exist trong trường hợp là parent not found:
 	if rookcephfsrefvol.Status.State == operatorv1.ParentNotFound {
 		log.Info("Can't found parent, removing finalizer")
 		controllerutil.RemoveFinalizer(rookcephfsrefvol, finalizerName)
-		return ctrl.Result{RequeueAfter: time.Second * 30}, r.writeInstance(ctx, log, rookcephfsrefvol)
-	}
+		if rookcephfsrefvol.Status.Children != "" {
+			if err := r.deleteObject(ctx, log, rookcephfsrefvol); err != nil {
+				return ctrl.Result{RequeueAfter: time.Second * 30}, r.writeInstance(ctx, log, rookcephfsrefvol)
 
-	// handle remove parent finalizer
-	if rookcephfsrefvol.Status.State == operatorv1.IsDeleting && controllerutil.ContainsFinalizer(parentPV, finalizerName) {
-		log.Info("Check If we can remove finalizer on parent PV")
-		childernList, err := r.fetchRefVolumeList(ctx, parentPV.Name)
-		if len(childernList) == 0 && err == nil {
-			controllerutil.RemoveFinalizer(parentPV, finalizerName)
-			controllerutil.RemoveFinalizer(targetPVC, finalizerName)
-			if err := r.Update(ctx, parentPV); err != nil {
-				log.Error(err, "Failed to update parent PV after finalizer removal")
-				return ctrl.Result{}, err
-			}
-			if err := r.Update(ctx, targetPVC); err != nil {
-				log.Error(err, "Failed to update parent PV after finalizer removal")
-				return ctrl.Result{}, err
 			}
 		}
+		return ctrl.Result{}, r.writeInstance(ctx, log, rookcephfsrefvol)
 	}
 
 	// Tạo PV nếu chưa tạo
@@ -193,6 +231,29 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.PersistentVolume{}, pvIndexKey, func(rawObj client.Object) []string {
+		pv := rawObj.(*corev1.PersistentVolume)
+		parent, ok := pv.GetAnnotations()["operator.dotv.home.arpa/parent"]
+		if !ok {
+			return nil
+		}
+		return []string{parent}
+	}); err != nil {
+		return err
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &operatorv1.RookCephFSRefVol{}, crIndexKey, func(rawObj client.Object) []string {
+		rookCephFSRefVol := rawObj.(*operatorv1.RookCephFSRefVol)
+
+		if rookCephFSRefVol.Status.Parent != "" {
+			return []string{rookCephFSRefVol.Status.Parent}
+		}
+
+		// If state is empty, return nil so it won't be indexed
+		return nil
+	}); err != nil {
+		return err
+	}
 	updatePred := predicate.Funcs{
 		// Only allow updates when the spec.size of the Busybox resource changes
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -274,7 +335,7 @@ func (r *RookCephFSRefVolReconciler) fetchRefVolumeList(ctx context.Context, par
 	}
 
 	for _, cr := range rookCephFSRefVolList.Items {
-		if cr.Status.Parent == parentPvName { // Kiểm tra điều kiện trong status
+		if cr.Status.Parent == parentPvName {
 			matchingCRs = append(matchingCRs, cr)
 		}
 	}
@@ -343,32 +404,52 @@ func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log lo
 		rookCephFsRefVol.Status.State = operatorv1.Bounded
 		rookCephFsRefVol.Status.Parent = parentPV.GetName()
 		rookCephFsRefVol.Status.Children = desiredPv.Name
+
 		annotations := parentPV.GetAnnotations()
 		if annotations == nil {
 			annotations = make(map[string]string)
 		}
-		annotations[operatorv1.IsParent] = "true"
-		parentPV.SetAnnotations(annotations)
+
+		// Only add the annotation if it's not already set to "true"
+		if currentValue, exists := annotations[operatorv1.IsParent]; !exists || currentValue != "true" {
+			annotations[operatorv1.IsParent] = "true"
+			parentPV.SetAnnotations(annotations)
+		}
 
 		pvcAnnotations := parentPVC.GetAnnotations()
 		if pvcAnnotations == nil {
 			pvcAnnotations = make(map[string]string)
 		}
-		pvcAnnotations[operatorv1.IsParent] = "true"
-		parentPVC.SetAnnotations(annotations)
-		controllerutil.AddFinalizer(parentPV, finalizerName)
-		controllerutil.AddFinalizer(parentPVC, finalizerName)
+
+		// Only add the annotation if it's not already set to "true"
+		if currentValue, exists := pvcAnnotations[operatorv1.IsParent]; !exists || currentValue != "true" {
+			pvcAnnotations[operatorv1.IsParent] = "true"
+			parentPVC.SetAnnotations(pvcAnnotations)
+		}
+
+		// Only add finalizers if not already added
+		if !controllerutil.ContainsFinalizer(parentPV, finalizerName) {
+			controllerutil.AddFinalizer(parentPV, finalizerName)
+		}
+
+		if !controllerutil.ContainsFinalizer(parentPVC, finalizerName) {
+			controllerutil.AddFinalizer(parentPVC, finalizerName)
+		}
+
 		log.Info("Successfully created refVolume", "desiredPv", desiredPv.Name)
 
 		if err := r.Update(ctx, parentPV); err != nil {
 			log.Error(err, "Error while updating parent PV annotations")
 			return err
 		}
+
 		if err := r.Update(ctx, parentPVC); err != nil {
-			log.Error(err, "Error while updating parent PV annotations")
+			log.Error(err, "Error while updating parent PVC annotations")
 			return err
 		}
+
 		r.Status().Update(ctx, rookCephFsRefVol)
+
 		return nil
 	}
 	log.Info("Parent is being deleted, not creating ref volume")
@@ -386,8 +467,9 @@ func annotationMapping(originalPv *corev1.PersistentVolume, sourceRookCephRefVol
 		}
 
 	}
-	annotations[operatorv1.CreatedBy] = sourceRookCephRefVolObj.Name
+	annotations[operatorv1.Owner] = sourceRookCephRefVolObj.Name
 	annotations[operatorv1.Parent] = originalPv.Name
+	annotations[operatorv1.CreatedBy] = operatorv1.ControllerName
 
 	return annotations
 }
@@ -426,6 +508,7 @@ func (r *RookCephFSRefVolReconciler) shouldDeleteRookCephFsRefVolume(log logr.Lo
 		log.Info("RookcephFsRefVol state is being marked at deleting and no RefVol bound to it, should finailzed it!!")
 		return false
 	}
+	println("true")
 	return true
 }
 
@@ -445,6 +528,7 @@ func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(log logr.Logger, rookCep
 			if rookCephFSRefVol.DeletionTimestamp.IsZero() {
 				log.Info("RookCephFSRefvol state is being marked at deleting and no RefVol is bounding to it, Start deleting it", "name", rookCephFSRefVol.Name)
 				return false
+
 			}
 			return false
 		}
@@ -452,6 +536,9 @@ func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(log logr.Logger, rookCep
 
 	case operatorv1.ParentNotFound:
 		log.Info("Parent not found; no need to delete", "name", rookCephFSRefVol.Name)
+		if rookCephFSRefVol.Status.Children != "" {
+			return true
+		}
 		return false
 
 	case operatorv1.Bounded:
@@ -504,6 +591,10 @@ func (r *RookCephFSRefVolReconciler) shouldCreateRefVol(ctx context.Context, log
 func (r *RookCephFSRefVolReconciler) shouldRemoveFinalizer(log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) bool {
 	// If the anchor is already finalized, there's no need to do it again.
 	if !controllerutil.ContainsFinalizer(rookCephFSRefVol, finalizerName) {
+		return false
+	}
+	// in anycases, if refVol still exist, we should not finalize the Crs
+	if refVolume.Name != "" {
 		return false
 	}
 	switch rookCephFSRefVol.Status.State {
@@ -632,6 +723,10 @@ func (r *RookCephFSRefVolReconciler) updateState(ctx context.Context, log logr.L
 	case parentPV.Name == "" || parentPVC.Name == "":
 		log.Info("Parent PV does not exist; marking RookCephFSRefVol as ParentNotFound")
 		updatedState = operatorv1.ParentNotFound
+		if rookcephfsRefVol.Status.Children != "" {
+			// handle case bị bỏ lại orphan cuối cùng
+			updatedState = operatorv1.IsDeleting
+		}
 	case refVolume.Name == "":
 		log.Info("No PV is associated with RookCephFSRefVol; marking state as Missing",
 			"RookCephFSRefVol", rookcephfsRefVol.Name, "Namespace", rookcephfsRefVol.Spec.Namespace)
