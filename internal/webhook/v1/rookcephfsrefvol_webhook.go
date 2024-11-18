@@ -73,11 +73,11 @@ func (d *RookCephFSRefVolCustomDefaulter) Default(ctx context.Context, obj runti
 	return nil
 }
 
-func (d *RookCephFSRefVolCustomDefaulter) applyDefaults(rookcephfsrefvol *operatorv1.RookCephFSRefVol) {
-	if rookcephfsrefvol.Spec.Namespace == "" {
-		rookcephfsrefvol.Spec.Namespace = d.DefaultNameSpace
-	}
-}
+// func (d *RookCephFSRefVolCustomDefaulter) applyDefaults(rookcephfsrefvol *operatorv1.RookCephFSRefVol) {
+// 	if rookcephfsrefvol.Spec.Namespace == "" {
+// 		rookcephfsrefvol.Spec.Namespace = d.DefaultNameSpace
+// 	}
+// }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 // NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.

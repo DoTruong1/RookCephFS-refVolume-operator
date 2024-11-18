@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -44,33 +45,45 @@ const (
 	IsParent                         = MetaGroup + "/is-parent"
 )
 
-// RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
-type RookCephFSRefVolSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
-	// Tên của PVC muốn tham chiếu
+type PvcInfo struct {
 	// +required
 	PvcName string `json:"pvcName"`
-	// +optional
+	// +required
 	Namespace string `json:"namespace"`
+}
+type PvcSpec struct {
+	StorageClassName *string                             `json:"storageClassName,omitempty"`
+	AccessModes      []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	Resources        corev1.ResourceRequirements         `json:"resources,omitempty"`
+}
+type DataSource struct {
+	// +required
 	// +kubebuilder:validation:Required
-	CephFsUserSecretName string `json:"cephFsUserSecretName"`
-	// userSecretName string `json:"userSecretName,omitempty"`
-	// +optional
-	// VolumeTemplates PersistentVolume `json:"volumeTemplates"`
+	PvcInfo PvcInfo `json:"pvcInfo,omitempty"`
+	// +kubebuilder:validation:Required
+	// +required
+	CreateIfNotExists bool    `json:"createIfNotExists,omitempty"`
+	PvcSpec           PvcSpec `json:"pvcSpec"`
+}
+type Destination struct {
+	// +required
+	// +kubebuilder:validation:Required
+	PvcInfo PvcInfo `json:"pvcInfo,omitempty"`
 }
 
-// RookCephFSRefVolStatus defines the observed state of RookCephFSRefVol
+type RookCephFSRefVolSpec struct {
+	// +required
+	// +kubebuilder:validation:Required
+	DataSource  DataSource  `json:"datasource"`
+	Destination Destination `json:"destination"`
+	// +kubebuilder:validation:Required
+	CephFsUserSecretName string `json:"cephFsUserSecretName"`
+}
+
 type RookCephFSRefVolStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 	State    RookCephFSRefVolState `json:"state,omitempty"`
 	Parent   string                `json:"parentPersistentVolume"`
 	Children string                `json:"refVolumeName"`
-	// RootPVName
-
 }
 
 // +kubebuilder:object:root=true
