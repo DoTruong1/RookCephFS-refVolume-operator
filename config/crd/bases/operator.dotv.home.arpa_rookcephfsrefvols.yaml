@@ -47,32 +47,92 @@ spec:
           metadata:
             type: object
           spec:
-            description: RookCephFSRefVolSpec defines the desired state of RookCephFSRefVol
             properties:
               cephFsUserSecretName:
                 type: string
-              namespace:
-                type: string
-              pvcName:
-                description: |-
-                  Foo is an example field of RookCephFSRefVol. Edit rookcephfsrefvol_types.go to remove/update
-                  Tên của PVC muốn tham chiếu
-                type: string
+              datasource:
+                properties:
+                  pvcInfo:
+                    properties:
+                      namespace:
+                        type: string
+                      pvcName:
+                        type: string
+                    required:
+                    - namespace
+                    - pvcName
+                    type: object
+                  pvcSpec:
+                    properties:
+                      accessModes:
+                        items:
+                          type: string
+                        type: array
+                      createIfNotExists:
+                        type: boolean
+                      resources:
+                        description: VolumeResourceRequirements describes the storage
+                          resource requirements for a volume.
+                        properties:
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                      storageClassName:
+                        type: string
+                    type: object
+                required:
+                - pvcInfo
+                - pvcSpec
+                type: object
+              destination:
+                properties:
+                  pvcInfo:
+                    properties:
+                      namespace:
+                        type: string
+                      pvcName:
+                        type: string
+                    required:
+                    - namespace
+                    - pvcName
+                    type: object
+                required:
+                - pvcInfo
+                type: object
             required:
             - cephFsUserSecretName
-            - pvcName
+            - datasource
+            - destination
             type: object
           status:
-            description: RookCephFSRefVolStatus defines the observed state of RookCephFSRefVol
             properties:
               parentPersistentVolume:
                 type: string
               refVolumeName:
                 type: string
               state:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
                 type: string
             required:
             - parentPersistentVolume

@@ -52,9 +52,10 @@ type PvcInfo struct {
 	Namespace string `json:"namespace"`
 }
 type PvcSpec struct {
-	StorageClassName *string                             `json:"storageClassName,omitempty"`
-	AccessModes      []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
-	Resources        corev1.ResourceRequirements         `json:"resources,omitempty"`
+	CreateIfNotExists bool                                `json:"createIfNotExists,omitempty"`
+	StorageClassName  *string                             `json:"storageClassName,omitempty"`
+	AccessModes       []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	Resources         corev1.VolumeResourceRequirements   `json:"resources,omitempty"`
 }
 type DataSource struct {
 	// +required
@@ -62,8 +63,7 @@ type DataSource struct {
 	PvcInfo PvcInfo `json:"pvcInfo,omitempty"`
 	// +kubebuilder:validation:Required
 	// +required
-	CreateIfNotExists bool    `json:"createIfNotExists,omitempty"`
-	PvcSpec           PvcSpec `json:"pvcSpec"`
+	PvcSpec PvcSpec `json:"pvcSpec"`
 }
 type Destination struct {
 	// +required

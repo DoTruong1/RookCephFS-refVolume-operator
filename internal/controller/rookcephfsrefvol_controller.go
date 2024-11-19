@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -37,8 +36,6 @@ import (
 
 	operatorv1 "github.com/DoTruong1/RookCephFS-refVolume-operator.git/api/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/util/retry"
 )
 
 // const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -51,7 +48,6 @@ type RookCephFSRefVolReconciler struct {
 }
 
 var (
-	finalizerName  = "operator.dotv.home.arpa/finalizer"
 	controllerName = "RookCephFSController"
 	pvIndexKey     = ".metadata.annotations." + operatorv1.Parent
 	crIndexKey     = ".status.parentPersistentVolume"
@@ -84,149 +80,63 @@ var (
 //
 // req ctrl.Request	  : chưa thông về đối tượng chưa thông tin về sự kiện mà trigger cái event cho
 func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx).WithName("RookCephFSRefVolReconciler")
+	log := log.FromContext(ctx)
 	rookcephfsrefvol := &operatorv1.RookCephFSRefVol{}
 
-	// fetch rookcephfsrefvol
 	if err := r.Get(ctx, req.NamespacedName, rookcephfsrefvol); err != nil {
-
 		if apierrors.IsNotFound(err) {
-			log.Info("[RookCephFSRefVol] has been deleted", "Name", req.Name)
+			log.Info("RookCephFSRefVol resource not found. Ignoring since object must be deleted.")
 			return ctrl.Result{}, nil
 		}
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
-		log.Error(err, "[RookCephFSRefVol] failed to get RookCephFSRefVol")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		log.Error(err, "Failed to get RookCephFSRefVol")
+		return ctrl.Result{}, err
 	}
 
-	// examine DeletionTimestamp to determine if object is under deletion
-	if rookcephfsrefvol.ObjectMeta.DeletionTimestamp.IsZero() {
-		// The object is not being deleted, so if it does not have our finalizer,
-		// then lets add the finalizer and update the object. This is equivalent
-		// to registering our finalizer.
-		if !controllerutil.ContainsFinalizer(rookcephfsrefvol, finalizerName) && rookcephfsrefvol.Status.State != operatorv1.ParentNotFound {
-			controllerutil.AddFinalizer(rookcephfsrefvol, finalizerName)
-			if err := r.Update(ctx, rookcephfsrefvol); err != nil {
-				log.Error(err, "Gặp lỗi trong quá trình thêm finalizers của tài nguyên RookCephFSVol")
-				return ctrl.Result{}, err
-			}
-		}
+	// Xử lý finalizers
+	// Thêm nếu chưa có
+	if err := r.handleFinalizers(ctx, rookcephfsrefvol); err != nil {
+		return ctrl.Result{}, err
 	}
-	// Có thể cần có cơ chế hay hơn cho việc lấy theo status
-	refVolume, err := r.getRefVolume(ctx, log, rookcephfsrefvol)
+
+	// Make sure source pvc is ready
+	dataSourcePVC, err := r.ensureSourcePVC(ctx, log, rookcephfsrefvol)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	targetPVC := &corev1.PersistentVolumeClaim{}
-	if err := r.Get(ctx, client.ObjectKey{
-		Name:      rookcephfsrefvol.Spec.PvcName,
-		Namespace: rookcephfsrefvol.Spec.Namespace,
-	}, targetPVC); err != nil && !apierrors.IsNotFound(err) {
+	// sourcePVC, err := r.getPersistentVolumeClaim(ctx, rookcephfsrefvol.Spec.DataSource.PvcInfo)
+	// if err != nil {
+	// 	log.Error(err, "Failed to get source PVC")
+	// 	return ctrl.Result{}, err
+	// }
 
+	// Lấy tt PV nguồn
+	dataSourcePv, err := r.getSourcePersistentVolume(ctx, dataSourcePVC.Spec.VolumeName)
+	if err != nil {
+		log.Error(err, "Failed to get parent PV")
 		return ctrl.Result{}, err
 	}
 
-	parentPV := &corev1.PersistentVolume{}
+	r.updateState(ctx, log, rookcephfsrefvol, dataSourcePv, dataSourcePVC)
 
-	if err := r.Get(ctx, client.ObjectKey{
-		Name: targetPVC.Spec.VolumeName,
-	}, parentPV); err != nil && !apierrors.IsNotFound(err) {
-		return ctrl.Result{}, err
-	}
-	r.updateState(ctx, log, rookcephfsrefvol, refVolume, parentPV, targetPVC)
-
-	// handle deletetion
-	if (!rookcephfsrefvol.ObjectMeta.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(rookcephfsrefvol, finalizerName)) || rookcephfsrefvol.Status.State == operatorv1.IsDeleting {
-
-		// if the object is being deleted
-		log.Info("Có yêu cầu xoá! Proceeding to cleanup the finalizers...")
-		if controllerutil.ContainsFinalizer(rookcephfsrefvol, finalizerName) {
-			// Thực hiện xoá
-			if err := r.onDelete(ctx, log, rookcephfsrefvol, refVolume); err != nil {
-				log.Error(err, "Gặp lỗi trong quá trình xoá tài nguyên RookCephFSVol")
-				return ctrl.Result{Requeue: true}, err
-			}
+	if !rookcephfsrefvol.ObjectMeta.DeletionTimestamp.IsZero() {
+		if err := r.onDelete(ctx, log, rookcephfsrefvol, dataSourcePVC, dataSourcePv); err != nil {
+			return ctrl.Result{}, err
 		}
-
-		// handle remove parent finalizer
-		if rookcephfsrefvol.Status.State == operatorv1.IsDeleting || (controllerutil.ContainsFinalizer(parentPV, finalizerName) && controllerutil.ContainsFinalizer(targetPVC, finalizerName)) {
-			log.Info("Check If we can remove finalizer on parent PV")
-			// Update ParentPVC
-			if err := r.Get(ctx, client.ObjectKey{
-				Name:      rookcephfsrefvol.Spec.PvcName,
-				Namespace: rookcephfsrefvol.Spec.Namespace,
-			}, targetPVC); err != nil && !apierrors.IsNotFound(err) {
-
-				return ctrl.Result{}, err
-			}
-
-			if err := r.Get(ctx, client.ObjectKey{
-				Name: targetPVC.Spec.VolumeName,
-			}, parentPV); err != nil && !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, err
-			}
-
-			var pvList corev1.PersistentVolumeList
-			var rookCephFsRefVolList operatorv1.RookCephFSRefVolList
-			if err := r.List(ctx, &pvList, client.MatchingFields{pvIndexKey: parentPV.Name}); err != nil {
-				log.Error(err, "unable to list child Jobs")
-				return ctrl.Result{}, err
-			}
-			if err := r.List(ctx, &rookCephFsRefVolList, client.MatchingFields{crIndexKey: parentPV.Name}); err != nil {
-				log.Error(err, "unable to list child Jobs")
-				return ctrl.Result{}, err
-			}
-			println("List size: ", len(pvList.Items))
-			if len(pvList.Items) == 0 {
-				log.Info("Parent dont have any child left safe to finalized")
-				controllerutil.RemoveFinalizer(parentPV, finalizerName)
-				retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-					// Perform the patch or update operation
-					return r.Update(ctx, parentPV)
-				})
-				// if err := r.Update(ctx, parentPV); err != nil {
-				// 	log.Error(err, "Failed to update parent PV after finalizer removal")
-				// 	return ctrl.Result{}, err
-				// }
-				controllerutil.RemoveFinalizer(targetPVC, finalizerName)
-				retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-					// Perform the patch or update operation
-					return r.Update(ctx, targetPVC)
-				})
-			}
-		}
+		return ctrl.Result{}, nil
 	}
 
-	//early exist trong trường hợp là parent not found:
-	if rookcephfsrefvol.Status.State == operatorv1.ParentNotFound {
-		log.Info("Can't found parent, removing finalizer")
-		controllerutil.RemoveFinalizer(rookcephfsrefvol, finalizerName)
-		if rookcephfsrefvol.Status.Children != "" {
-			if err := r.deleteObject(ctx, log, rookcephfsrefvol); err != nil {
-				return ctrl.Result{RequeueAfter: time.Second * 30}, r.writeInstance(ctx, log, rookcephfsrefvol)
-
-			}
-		}
-		return ctrl.Result{}, r.writeInstance(ctx, log, rookcephfsrefvol)
-	}
-
-	// Tạo PV nếu chưa tạo
 	if rookcephfsrefvol.Status.State == operatorv1.Missing {
-		log.Info("Bắt đầu quá trình thực hiện tạo Pv cho RookCephFSRefVol")
-		if err := r.createRefVolume(ctx, log, rookcephfsrefvol, parentPV, targetPVC); err != nil {
-			if err := r.writeInstance(ctx, log, rookcephfsrefvol); err != nil {
-				log.Error(err, "while setting rookcephfsrefvol state", "state", operatorv1.Missing, "reason", err)
-			}
+		if err := r.createRefVolume(ctx, log, rookcephfsrefvol, dataSourcePv, dataSourcePVC); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	// Reconcile PV
+	if err := r.createDestinationPVC(ctx, log, rookcephfsrefvol, dataSourcePVC); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: time.Minute * 1}, nil
 
-	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -291,12 +201,6 @@ func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&operatorv1.RookCephFSRefVol{}). //specifies the type of resource to watch
 		Owns(&corev1.PersistentVolume{}).
 		Watches(&corev1.PersistentVolumeClaim{}, handler.EnqueueRequestsFromMapFunc(r.filterParent), builder.WithPredicates(updatePred)).
-		// Watches(
-		// 	&corev1.PersistentVolume{},
-		// 	handler.EnqueueRequestsFromMapFunc(r.filterParent),
-		// 	builder.WithPredicates(updatePred),
-		// ).
-		// Owns(&corev1.PersistentVolumeClaim{}).
 		Complete(r)
 }
 
@@ -351,152 +255,31 @@ func (r *RookCephFSRefVolReconciler) fetchRefVolumeList(ctx context.Context, par
 	return matchingCRs, nil
 }
 
-func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.PersistentVolume, rookCephFSRefVol *operatorv1.RookCephFSRefVol) *corev1.PersistentVolume {
-	newPvPrefix := "-" + rookCephFSRefVol.ObjectMeta.Name + "-" + rookCephFSRefVol.ObjectMeta.Namespace
-	newPV := &corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: rookCephFSRefVol.Name + "-" + rookCephFSRefVol.Spec.Namespace + "-" + rookCephFSRefVol.Spec.PvcName + "-",
-			Annotations:  make(map[string]string),
-			Labels:       make(map[string]string),
-			// {
-			// 	"parent":     originalPv.Name,
-			// 	"created-by": controllerName,
-			// },
-		},
-		Spec: *originalPv.Spec.DeepCopy(),
-	}
-	if newPV.Spec.PersistentVolumeSource.CSI != nil {
-		newPV.Spec.ClaimRef = nil
-		newPV.Spec.PersistentVolumeSource.CSI.NodeStageSecretRef.Name = rookCephFSRefVol.Spec.CephFsUserSecretName
-		newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["staticVolume"] = "true"
-		newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["rootPath"] = newPV.Spec.PersistentVolumeSource.CSI.VolumeAttributes["subvolumePath"]
-		newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle = newPV.Spec.PersistentVolumeSource.CSI.VolumeHandle + newPvPrefix
-		newPV.Spec.PersistentVolumeReclaimPolicy = "Retain"
-	}
-
-	newPV.ObjectMeta.Annotations = annotationMapping(originalPv, rookCephFSRefVol)
-	for k, v := range originalPv.GetLabels() {
-		newPV.ObjectMeta.Labels[k] = v
-	}
-	// set parent child ownership
-	// fmt.Print(newPV)
-	controllerutil.SetControllerReference(rookCephFSRefVol, newPV, r.Scheme, controllerutil.WithBlockOwnerDeletion(true))
-	// controllerutil.SetOwnerReference(rookCephFSRefVol, newPV, r.Scheme, controllerutil.WithBlockOwnerDeletion(true))
-	return newPV
-}
-
-func (r *RookCephFSRefVolReconciler) ownObject(cr *operatorv1.RookCephFSRefVol, obj client.Object) error {
-
-	err := ctrl.SetControllerReference(cr, obj, r.Scheme)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log logr.Logger, rookCephFsRefVol *operatorv1.RookCephFSRefVol, parentPV *corev1.PersistentVolume, parentPVC *corev1.PersistentVolumeClaim) error {
-
-	if parentPV.DeletionTimestamp.IsZero() {
-		desiredPv := r.buildRefVolumeManifest(parentPV, rookCephFsRefVol)
-		err := r.ownObject(rookCephFsRefVol, desiredPv)
-
-		if err != nil {
-			log.Error(err, "Err While setting controller ref")
-			return err
-		}
-		// log.Info("Creating RefVolume", rookCephFsRefVol.Name)
-		if err := r.Create(ctx, desiredPv); err != nil {
-			log.Error(err, "Err While creating Refvolume")
-			rookCephFsRefVol.Status.State = operatorv1.Missing
-			return r.Status().Update(ctx, rookCephFsRefVol)
-		}
-		rookCephFsRefVol.Status.State = operatorv1.Bounded
-		rookCephFsRefVol.Status.Parent = parentPV.GetName()
-		rookCephFsRefVol.Status.Children = desiredPv.Name
-
-		annotations := parentPV.GetAnnotations()
-		if annotations == nil {
-			annotations = make(map[string]string)
-		}
-
-		// Only add the annotation if it's not already set to "true"
-		if currentValue, exists := annotations[operatorv1.IsParent]; !exists || currentValue != "true" {
-			annotations[operatorv1.IsParent] = "true"
-			parentPV.SetAnnotations(annotations)
-		}
-
-		pvcAnnotations := parentPVC.GetAnnotations()
-		if pvcAnnotations == nil {
-			pvcAnnotations = make(map[string]string)
-		}
-
-		// Only add the annotation if it's not already set to "true"
-		if currentValue, exists := pvcAnnotations[operatorv1.IsParent]; !exists || currentValue != "true" {
-			pvcAnnotations[operatorv1.IsParent] = "true"
-			parentPVC.SetAnnotations(pvcAnnotations)
-		}
-
-		// Only add finalizers if not already added
-		if !controllerutil.ContainsFinalizer(parentPV, finalizerName) {
-			controllerutil.AddFinalizer(parentPV, finalizerName)
-		}
-
-		if !controllerutil.ContainsFinalizer(parentPVC, finalizerName) {
-			controllerutil.AddFinalizer(parentPVC, finalizerName)
-		}
-
-		log.Info("Successfully created refVolume", "desiredPv", desiredPv.Name)
-
-		if err := r.Update(ctx, parentPV); err != nil {
-			log.Error(err, "Error while updating parent PV annotations")
-			return err
-		}
-
-		if err := r.Update(ctx, parentPVC); err != nil {
-			log.Error(err, "Error while updating parent PVC annotations")
-			return err
-		}
-
-		r.Status().Update(ctx, rookCephFsRefVol)
-
-		return nil
-	}
-	log.Info("Parent is being deleted, not creating ref volume")
-	rookCephFsRefVol.Status.State = operatorv1.ParentDeleting
-	rookCephFsRefVol.Status.Parent = parentPV.GetName()
-	rookCephFsRefVol.Status.Children = ""
-	return r.Status().Update(ctx, rookCephFsRefVol)
-}
-
-func annotationMapping(originalPv *corev1.PersistentVolume, sourceRookCephRefVolObj *operatorv1.RookCephFSRefVol) map[string]string {
-	annotations := make(map[string]string)
-	for k, v := range originalPv.GetAnnotations() {
-		if !strings.HasPrefix(k, operatorv1.MetaGroup) {
-			annotations[k] = v
-		}
-
-	}
-	annotations[operatorv1.Owner] = sourceRookCephRefVolObj.Name
-	annotations[operatorv1.Parent] = originalPv.Name
-	annotations[operatorv1.CreatedBy] = operatorv1.ControllerName
-
-	return annotations
-}
-
-func (r *RookCephFSRefVolReconciler) onDelete(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) error {
+func (r *RookCephFSRefVolReconciler) onDelete(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, dataSourcePvc *corev1.PersistentVolumeClaim, dataSourcePv *corev1.PersistentVolume) error {
 
 	// IsDeletingCRD, errr := crd.
 	switch {
-	case r.shouldDeleteRefVol(log, rookCephFSRefVol, refVolume):
+	case r.shouldDeleteRefVol(log, rookCephFSRefVol, dataSourcePvc):
 		log.Info("Deleting refVolume due to CR being deleted")
-		return r.deleteObject(ctx, log, refVolume)
-	case r.shouldDeleteRookCephFsRefVolume(log, rookCephFSRefVol, refVolume):
+		// delete PVC
+		err := r.deleteObject(ctx, dataSourcePvc)
+		if err != nil {
+			return err
+		}
+
+		// delete PV
+		err2 := r.deleteObject(ctx, dataSourcePv)
+		if err2 != nil {
+			return err2
+		}
+		return nil
+	case r.shouldDeleteRookCephFsRefVolume(log, rookCephFSRefVol, dataSourcePvc):
 		log.Info("Deleting rookCephFSRefVol due to CR being deleted")
-		return r.deleteObject(ctx, log, rookCephFSRefVol)
-	case r.shouldRemoveFinalizer(log, rookCephFSRefVol, refVolume):
+		return r.deleteObject(ctx, rookCephFSRefVol)
+	case r.shouldRemoveFinalizer(log, rookCephFSRefVol, dataSourcePv, dataSourcePvc):
 		log.Info("Remove finalizer from Crs")
 		controllerutil.RemoveFinalizer(rookCephFSRefVol, finalizerName)
-		return r.writeInstance(ctx, log, rookCephFSRefVol)
+		return r.writeInstance(ctx, rookCephFSRefVol)
 	default:
 		if controllerutil.ContainsFinalizer(rookCephFSRefVol, finalizerName) {
 			log.Info("Waiting for refVolume to be fully purged before letting the CR be deleted")
@@ -511,7 +294,7 @@ func (r *RookCephFSRefVolReconciler) onDelete(ctx context.Context, log logr.Logg
 
 }
 
-func (r *RookCephFSRefVolReconciler) shouldDeleteRookCephFsRefVolume(log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) bool {
+func (r *RookCephFSRefVolReconciler) shouldDeleteRookCephFsRefVolume(log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolumeClaim) bool {
 
 	if operatorv1.IsDeleting == rookCephFSRefVol.Status.State && refVolume.Name == "" && !rookCephFSRefVol.DeletionTimestamp.IsZero() {
 		log.Info("RookcephFsRefVol state is being marked at deleting and no RefVol bound to it, should finailzed it!!")
@@ -521,7 +304,7 @@ func (r *RookCephFSRefVolReconciler) shouldDeleteRookCephFsRefVolume(log logr.Lo
 	return true
 }
 
-func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) bool {
+func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolumeClaim) bool {
 	// Kiểm tra nếu refVolume không tồn tại hoặc tên trống
 
 	switch rookCephFSRefVol.Status.State {
@@ -572,144 +355,110 @@ func (r *RookCephFSRefVolReconciler) shouldDeleteRefVol(log logr.Logger, rookCep
 	}
 }
 
-func (r *RookCephFSRefVolReconciler) shouldCreateRefVol(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol) (*corev1.PersistentVolume, bool) {
-	persistentVolumeClaim, err := r.getPersistentVolumeClaim(ctx, log, rookCephFSRefVol)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			log.Error(err, "Err when get PersistentClaim")
-			return nil, false
-		}
-		log.Info("PeristenVolumeClaim", rookCephFSRefVol.Spec.PvcName, "Namespace", rookCephFSRefVol.Namespace, "is not existed")
-		return nil, false
-	}
-	pv, err := r.getSourcePersistentVolume(ctx, log, persistentVolumeClaim.Spec.VolumeName)
+// func (r *RookCephFSRefVolReconciler) shouldCreateRefVol(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol) (*corev1.PersistentVolume, bool) {
+// 	persistentVolumeClaim, err := r.getPersistentVolumeClaim(ctx, log, rookCephFSRefVol)
+// 	if err != nil {
+// 		if !apierrors.IsNotFound(err) {
+// 			log.Error(err, "Err when get PersistentClaim")
+// 			return nil, false
+// 		}
+// 		log.Info("PeristenVolumeClaim", rookCephFSRefVol.Spec.PvcName, "Namespace", rookCephFSRefVol.Namespace, "is not existed")
+// 		return nil, false
+// 	}
+// 	pv, err := r.getSourcePersistentVolume(ctx, log, persistentVolumeClaim.Spec.VolumeName)
 
-	if err != nil {
-		log.Info("Err when get PersistentVolume", rookCephFSRefVol.Spec.PvcName, "Namespace", rookCephFSRefVol.Namespace, "is not existed")
-		return nil, false
-	}
+// 	if err != nil {
+// 		log.Info("Err when get PersistentVolume", rookCephFSRefVol.Spec.PvcName, "Namespace", rookCephFSRefVol.Namespace, "is not existed")
+// 		return nil, false
+// 	}
 
-	if !pv.DeletionTimestamp.IsZero() {
-		log.Info("ParentPv is deleting", rookCephFSRefVol.Status.Parent)
-		return nil, false
-	}
+// 	if !pv.DeletionTimestamp.IsZero() {
+// 		log.Info("ParentPv is deleting", rookCephFSRefVol.Status.Parent)
+// 		return nil, false
+// 	}
 
-	return pv, true
-}
+// 	return pv, true
+// }
 
-func (r *RookCephFSRefVolReconciler) shouldRemoveFinalizer(log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume) bool {
-	// If the anchor is already finalized, there's no need to do it again.
-	if !controllerutil.ContainsFinalizer(rookCephFSRefVol, finalizerName) {
-		return false
-	}
-	// in anycases, if refVol still exist, we should not finalize the Crs
-	if refVolume.Name != "" {
-		return false
-	}
-	switch rookCephFSRefVol.Status.State {
-	case operatorv1.Bounded:
-		// RefVol và Crs được bound với nhau
-		// Do đã gọi hàm shouldDeleteRefVol
-		if refVolume.DeletionTimestamp.IsZero() {
-			log.Info("refVolume will not be deleted, allow cr to be finalized")
-			return true
-		}
-		log.Info("RefVolume is being deleted; cannot finalize cr yet")
-		return false
-	case operatorv1.IsDeleting:
-		if refVolume.Name == "" {
-			log.Info("The PV associate with RookCephFsRefVol is deleted allow cr to be finalized")
-			return true
-		}
-		return false
-	case operatorv1.ParentNotFound:
-		log.Info("RookCephFSRefVol is in ParentNotFound state, safe to remove finalize")
-		return true
-	default:
-		// Should never happen, so log an error and let it be deleted.
-		// log.Error(errors.New("illegal state"), "Unknown state", "state", inst.Status.State)
-		return true
-	}
-}
-func (r *RookCephFSRefVolReconciler) getPersistentVolumeClaim(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol) (*corev1.PersistentVolumeClaim, error) {
-	persistentVolumeClaim := &corev1.PersistentVolumeClaim{}
+// func (r *RookCephFSRefVolReconciler) getPersistentVolumeClaim(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol) (*corev1.PersistentVolumeClaim, error) {
+// 	persistentVolumeClaim := &corev1.PersistentVolumeClaim{}
 
-	// var PersistentVolume corev1.PersistentVolume
+// 	// var PersistentVolume corev1.PersistentVolume
 
-	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: rookCephFSRefVol.Spec.Namespace,
-		Name:      rookCephFSRefVol.Spec.PvcName,
-	}, persistentVolumeClaim); err != nil {
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
-		return &corev1.PersistentVolumeClaim{}, err
-	}
-	return persistentVolumeClaim, nil
-}
+// 	if err := r.Get(ctx, client.ObjectKey{
+// 		Namespace: rookCephFSRefVol.Spec.Namespace,
+// 		Name:      rookCephFSRefVol.Spec.PvcName,
+// 	}, persistentVolumeClaim); err != nil {
+// 		// we'll ignore not-found errors, since they can't be fixed by an immediate
+// 		// requeue (we'll need to wait for a new notification), and we can get them
+// 		// on deleted requests.
+// 		return &corev1.PersistentVolumeClaim{}, err
+// 	}
+// 	return persistentVolumeClaim, nil
+// }
 
-func (r *RookCephFSRefVolReconciler) getRefVolume(ctx context.Context, log logr.Logger, rookCephFSRefVolume *operatorv1.RookCephFSRefVol) (*corev1.PersistentVolume, error) {
-	persistentVolume := &corev1.PersistentVolume{}
+// func (r *RookCephFSRefVolReconciler) getRefVolume(ctx context.Context, log logr.Logger, rookCephFSRefVolume *operatorv1.RookCephFSRefVol) (*corev1.PersistentVolume, error) {
+// 	persistentVolume := &corev1.PersistentVolume{}
 
-	// var PersistentVolume corev1.PersistentVolume
-	if err := r.Get(ctx, client.ObjectKey{
-		Name: rookCephFSRefVolume.Status.Children,
-	}, persistentVolume); err != nil {
-		if !apierrors.IsNotFound(err) {
-			log.Error(err, "unable to fetch source PersistentVolumeClaim")
-			return nil, err
-		}
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
-		return &corev1.PersistentVolume{}, nil
-	}
+// 	// var PersistentVolume corev1.PersistentVolume
+// 	if err := r.Get(ctx, client.ObjectKey{
+// 		Name: rookCephFSRefVolume.Status.Children,
+// 	}, persistentVolume); err != nil {
+// 		if !apierrors.IsNotFound(err) {
+// 			log.Error(err, "unable to fetch source PersistentVolumeClaim")
+// 			return nil, err
+// 		}
+// 		// we'll ignore not-found errors, since they can't be fixed by an immediate
+// 		// requeue (we'll need to wait for a new notification), and we can get them
+// 		// on deleted requests.
+// 		return &corev1.PersistentVolume{}, nil
+// 	}
 
-	return persistentVolume, nil
-}
+// 	return persistentVolume, nil
+// }
 
-func (r *RookCephFSRefVolReconciler) shouldTriggerDelete(ctx context.Context, refVolume *corev1.PersistentVolume) bool {
+// func (r *RookCephFSRefVolReconciler) shouldTriggerDelete(ctx context.Context, refVolume *corev1.PersistentVolume) bool {
 
-	if refVolume.GetName() == "" {
-		return false
-	}
-	parentPV := &corev1.PersistentVolume{}
+// 	if refVolume.GetName() == "" {
+// 		return false
+// 	}
+// 	parentPV := &corev1.PersistentVolume{}
 
-	if err := r.Get(ctx, client.ObjectKey{
-		Name: refVolume.GetAnnotations()[operatorv1.Parent],
-	}, parentPV); err != nil {
-		return false
-	}
-	return parentPV.DeletionTimestamp.IsZero()
-}
+// 	if err := r.Get(ctx, client.ObjectKey{
+// 		Name: refVolume.GetAnnotations()[operatorv1.Parent],
+// 	}, parentPV); err != nil {
+// 		return false
+// 	}
+// 	return parentPV.DeletionTimestamp.IsZero()
+// }
 
-func (r *RookCephFSRefVolReconciler) getSourcePersistentVolume(ctx context.Context, log logr.Logger, parentPvName string) (*corev1.PersistentVolume, error) {
-	persistentVolume := &corev1.PersistentVolume{}
+// func (r *RookCephFSRefVolReconciler) getSourcePersistentVolume(ctx context.Context, log logr.Logger, parentPvName string) (*corev1.PersistentVolume, error) {
+// 	persistentVolume := &corev1.PersistentVolume{}
 
-	if err := r.Get(ctx, client.ObjectKey{
-		Name: parentPvName,
-	}, persistentVolume); err != nil {
-		return &corev1.PersistentVolume{}, err
-	}
+// 	if err := r.Get(ctx, client.ObjectKey{
+// 		Name: parentPvName,
+// 	}, persistentVolume); err != nil {
+// 		return &corev1.PersistentVolume{}, err
+// 	}
 
-	return persistentVolume, nil
-}
+// 	return persistentVolume, nil
+// }
 
-func (r *RookCephFSRefVolReconciler) deleteObject(ctx context.Context, log logr.Logger, obj client.Object) error {
-	if err := r.Delete(ctx, obj); err != nil {
-		log.Error(err, "While deleting", "Kind", obj.GetObjectKind().GroupVersionKind().Kind, "Name", obj.GetName())
-		return err
-	}
-	return nil
-}
+// func (r *RookCephFSRefVolReconciler) deleteObject(ctx context.Context, log logr.Logger, obj client.Object) error {
+// 	if err := r.Delete(ctx, obj); err != nil {
+// 		log.Error(err, "While deleting", "Kind", obj.GetObjectKind().GroupVersionKind().Kind, "Name", obj.GetName())
+// 		return err
+// 	}
+// 	return nil
+// }
 
-func (r *RookCephFSRefVolReconciler) RemoveFinalizer(ctx context.Context, log logr.Logger, rookCephFSRefVolume *operatorv1.RookCephFSRefVol) error {
-	if err := r.Update(ctx, rookCephFSRefVolume); err != nil {
-		log.Error(err, "While deleting ref volume")
-		return err
-	}
-	return nil
-}
+// func (r *RookCephFSRefVolReconciler) RemoveFinalizer(ctx context.Context, log logr.Logger, rookCephFSRefVolume *operatorv1.RookCephFSRefVol) error {
+// 	if err := r.Update(ctx, rookCephFSRefVolume); err != nil {
+// 		log.Error(err, "While deleting ref volume")
+// 		return err
+// 	}
+// 	return nil
+// }
 
 // func (r *RookCephFSRefVolReconciler) isRootPv(ctx context.Context, log logr.Logger, rookcephfsRefVol *operatorv1.RookCephFSRefVol) error {
 // 	state := rookcephfsRefVol.Status.State
@@ -722,58 +471,58 @@ func (r *RookCephFSRefVolReconciler) RemoveFinalizer(ctx context.Context, log lo
 // 	return nil
 // }
 
-func (r *RookCephFSRefVolReconciler) updateState(ctx context.Context, log logr.Logger, rookcephfsRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume, parentPV *corev1.PersistentVolume, parentPVC *corev1.PersistentVolumeClaim) {
-	updatedState := rookcephfsRefVol.Status.State
-	switch {
-	case !rookcephfsRefVol.DeletionTimestamp.IsZero() || !parentPV.DeletionTimestamp.IsZero() || !parentPVC.DeletionTimestamp.IsZero():
-		log.Info("RookCephFSRefVol is being deleted; marking state as IsDeleting")
-		updatedState = operatorv1.IsDeleting
-	case parentPV.Name == "" || parentPVC.Name == "":
-		log.Info("Parent PV does not exist; marking RookCephFSRefVol as ParentNotFound")
-		updatedState = operatorv1.ParentNotFound
+// func (r *RookCephFSRefVolReconciler) updateState(ctx context.Context, log logr.Logger, rookcephfsRefVol *operatorv1.RookCephFSRefVol, refVolume *corev1.PersistentVolume, parentPV *corev1.PersistentVolume, parentPVC *corev1.PersistentVolumeClaim) {
+// 	updatedState := rookcephfsRefVol.Status.State
+// 	switch {
+// 	case !rookcephfsRefVol.DeletionTimestamp.IsZero() || !parentPV.DeletionTimestamp.IsZero() || !parentPVC.DeletionTimestamp.IsZero():
+// 		log.Info("RookCephFSRefVol is being deleted; marking state as IsDeleting")
+// 		updatedState = operatorv1.IsDeleting
+// 	case parentPV.Name == "" || parentPVC.Name == "":
+// 		log.Info("Parent PV does not exist; marking RookCephFSRefVol as ParentNotFound")
+// 		updatedState = operatorv1.ParentNotFound
 
-		if rookcephfsRefVol.Status.Children != "" {
-			// handle case bị bỏ lại orphan cuối cùng
-			updatedState = operatorv1.IsDeleting
-		}
-	case refVolume.Name == "":
-		log.Info("No PV is associated with RookCephFSRefVol; marking state as Missing",
-			"RookCephFSRefVol", rookcephfsRefVol.Name, "Namespace", rookcephfsRefVol.Spec.Namespace)
-		updatedState = operatorv1.Missing
-	default:
-		if rookcephfsRefVol.Status.State != operatorv1.Bounded {
-			log.Info("RefVolume is successfully created; marking RookCephFSRefVol state as Bounded",
-				"previous state", rookcephfsRefVol.Status.State)
-		}
-		updatedState = operatorv1.Bounded
-	}
+// 		if rookcephfsRefVol.Status.Children != "" {
+// 			// handle case bị bỏ lại orphan cuối cùng
+// 			updatedState = operatorv1.IsDeleting
+// 		}
+// 	case refVolume.Name == "":
+// 		log.Info("No PV is associated with RookCephFSRefVol; marking state as Missing",
+// 			"RookCephFSRefVol", rookcephfsRefVol.Name, "Namespace", rookcephfsRefVol.Spec.Namespace)
+// 		updatedState = operatorv1.Missing
+// 	default:
+// 		if rookcephfsRefVol.Status.State != operatorv1.Bounded {
+// 			log.Info("RefVolume is successfully created; marking RookCephFSRefVol state as Bounded",
+// 				"previous state", rookcephfsRefVol.Status.State)
+// 		}
+// 		updatedState = operatorv1.Bounded
+// 	}
 
-	// Cập nhật trạng thái nếu có sự thay đổi
-	if rookcephfsRefVol.Status.State != updatedState {
-		rookcephfsRefVol.Status.State = updatedState
-		if err := r.Status().Update(ctx, rookcephfsRefVol); err != nil {
-			log.Error(err, "Failed to update status of RookCephFSRefVol", "new state", updatedState)
-		} else {
-			log.Info("Status updated successfully", "new state", updatedState)
-		}
-	} else {
-		log.Info("No change in state, skipping status update", "current state", updatedState)
-	}
-}
+// 	// Cập nhật trạng thái nếu có sự thay đổi
+// 	if rookcephfsRefVol.Status.State != updatedState {
+// 		rookcephfsRefVol.Status.State = updatedState
+// 		if err := r.Status().Update(ctx, rookcephfsRefVol); err != nil {
+// 			log.Error(err, "Failed to update status of RookCephFSRefVol", "new state", updatedState)
+// 		} else {
+// 			log.Info("Status updated successfully", "new state", updatedState)
+// 		}
+// 	} else {
+// 		log.Info("No change in state, skipping status update", "current state", updatedState)
+// 	}
+// }
 
-func (r *RookCephFSRefVolReconciler) writeInstance(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol) error {
-	if rookCephFSRefVol.CreationTimestamp.IsZero() {
-		if err := r.Create(ctx, rookCephFSRefVol); err != nil {
-			log.Error(err, "while creating on apiserver")
-			return err
-		}
-	} else {
-		if err := r.Update(ctx, rookCephFSRefVol); err != nil {
-			log.Error(err, "while updating on apiserver")
-			return err
-		}
-	}
-	return nil
-}
+// func (r *RookCephFSRefVolReconciler) writeInstance(ctx context.Context, log logr.Logger, rookCephFSRefVol *operatorv1.RookCephFSRefVol) error {
+// 	if rookCephFSRefVol.CreationTimestamp.IsZero() {
+// 		if err := r.Create(ctx, rookCephFSRefVol); err != nil {
+// 			log.Error(err, "while creating on apiserver")
+// 			return err
+// 		}
+// 	} else {
+// 		if err := r.Update(ctx, rookCephFSRefVol); err != nil {
+// 			log.Error(err, "while updating on apiserver")
+// 			return err
+// 		}
+// 	}
+// 	return nil
+// }
 
 // func (r *RookCephFSRefVolReconciler) updateStatus(ctx context.Context, log logr.Logger)

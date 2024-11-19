@@ -1,37 +1,25 @@
----
-apiVersion: operator.dotv.home.arpa/v1
-kind: RookCephFSRefVol
-metadata:
-  name: <tên của custom resource>
-spec:
-  pvcName: <Tên của PVC muốn chia sẻ>
-  namespace: <namespace của PVC>
-  cephFsUserSecretName: <Tên secret mà persistent volume sử dụng>
----
-apiVersion: operator.dotv.home.arpa/v1
-kind: RookCephFSRefVol
-metadata:
-  labels:
-    app.kubernetes.io/name: rookcephfs-refvolume-operator
-    app.kubernetes.io/managed-by: kustomize
-  name: test2
-spec:
-  pvcName: cephfs-pvc-9b9j9
-  namespace: default
-  cephFsUserSecretName: rook-csi-cephfs-node-user
-  # TODO(user): Add fields here
+
 ---
 apiVersion: operator.dotv.home.arpa/v1
 kind: RookCephFSRefVol
 metadata:
   name: refvol-1
 spec:
-  source:
-    pvcName: cephfs-pvc-9b9j9
-    namespace: default
-    createIfNotExist: true
+  datasource:
+    pvcInfo:
+      pvcName: cephfs-pvc-9b9j9
+      namespace: default
+    pvcSpec:
+      createIfNotExists: true
+      storageClassName: rook-cephfs
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
   destination:
-    pvcName: cephfs-pvc-9b9j9
-    namespace: others
+    pvcInfo:
+      pvcName: cephfs-pvc-9b9j9
+      namespace: others
   cephFsUserSecretName: rook-csi-cephfs-node-user
 
