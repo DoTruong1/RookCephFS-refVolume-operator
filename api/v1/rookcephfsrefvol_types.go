@@ -33,6 +33,8 @@ const (
 	Bounded RookCephFSRefVolState = "Bounded"
 	// PV chưa được tạo
 	Missing RookCephFSRefVolState = "Missing"
+	//
+	Conflict RookCephFSRefVolState = "Conflict"
 	// ? Có trường hợp nào là Parent not found không?
 	ParentNotFound RookCephFSRefVolState = "ParentNotFound"
 	//
@@ -40,7 +42,7 @@ const (
 
 	IsDeleting RookCephFSRefVolState = "Deleting"
 	CreatedBy                        = MetaGroup + "/createdBy"
-	Owner                            = MetaGroup + "/owner"
+	Children                         = MetaGroup + "/children"
 	Parent                           = MetaGroup + "/parent"
 	IsParent                         = MetaGroup + "/is-parent"
 )

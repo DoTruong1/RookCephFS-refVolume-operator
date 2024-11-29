@@ -19,6 +19,7 @@ package v1
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,13 +30,13 @@ import (
 	operatorv1 "github.com/DoTruong1/RookCephFS-refVolume-operator.git/api/v1"
 )
 
-// nolint:unused
 // log is for logging in this package.
 var rookcephfsrefvollog = logf.Log.WithName("rookcephfsrefvol-resource")
 
 // SetupRookCephFSRefVolWebhookWithManager registers the webhook for RookCephFSRefVol in the manager.
 func SetupRookCephFSRefVolWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1.RookCephFSRefVol{}).
+	return ctrl.NewWebhookManagedBy(mgr).
+		For(&operatorv1.RookCephFSRefVol{}).
 		WithValidator(&RookCephFSRefVolCustomValidator{}).
 		WithDefaulter(&RookCephFSRefVolCustomDefaulter{
 			DefaultNameSpace: "default",
@@ -43,93 +44,100 @@ func SetupRookCephFSRefVolWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 // +kubebuilder:webhook:path=/mutate-operator-dotv-home-arpa-v1-rookcephfsrefvol,mutating=true,failurePolicy=fail,sideEffects=None,groups=operator.dotv.home.arpa,resources=rookcephfsrefvols,verbs=create;update,versions=v1,name=mrookcephfsrefvol-v1.kb.io,admissionReviewVersions=v1
 
-// RookCephFSRefVolCustomDefaulter struct is responsible for setting default values on the custom resource of the
-// Kind RookCephFSRefVol when those are created or updated.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as it is used only for temporary operations and does not need to be deeply copied.
 type RookCephFSRefVolCustomDefaulter struct {
 	DefaultNameSpace string
-	// TODO(user): Add more fields as needed for defaulting
 }
 
 var _ webhook.CustomDefaulter = &RookCephFSRefVolCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind RookCephFSRefVol.
+// Default sets default values for the RookCephFSRefVol resource.
 func (d *RookCephFSRefVolCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	rookcephfsrefvol, ok := obj.(*operatorv1.RookCephFSRefVol)
-
 	if !ok {
-		return fmt.Errorf("expected an RookCephFSRefVol object but got %T", obj)
+		return fmt.Errorf("expected a RookCephFSRefVol object but got %T", obj)
 	}
-	rookcephfsrefvollog.Info("Defaulting for RookCephFSRefVol", "name", rookcephfsrefvol.GetName())
 
-	// TODO(user): fill in your defaulting logic.
+	rookcephfsrefvollog.Info("Defaulting for RookCephFSRefVol", "name", rookcephfsrefvol.GetName())
+	// Set default namespace if not provided
+	if rookcephfsrefvol.Spec.DataSource.PvcInfo.Namespace == "" {
+		rookcephfsrefvol.Spec.DataSource.PvcInfo.Namespace = d.DefaultNameSpace
+	}
 
 	return nil
 }
 
-// func (d *RookCephFSRefVolCustomDefaulter) applyDefaults(rookcephfsrefvol *operatorv1.RookCephFSRefVol) {
-// 	if rookcephfsrefvol.Spec.Namespace == "" {
-// 		rookcephfsrefvol.Spec.Namespace = d.DefaultNameSpace
-// 	}
-// }
+// +kubebuilder:webhook:path=/validate-operator-dotv-home-arpa-v1-rookcephfsrefvol,mutating=false,failurePolicy=fail,sideEffects=None,groups=operator.dotv.home.arpa,resources=rookcephfsrefvols,verbs=create;update;delete,versions=v1,name=vrookcephfsrefvol-v1.kb.io,admissionReviewVersions=v1
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
-// +kubebuilder:webhook:path=/validate-operator-dotv-home-arpa-v1-rookcephfsrefvol,mutating=false,failurePolicy=fail,sideEffects=None,groups=operator.dotv.home.arpa,resources=rookcephfsrefvols,verbs=create;update,versions=v1,name=vrookcephfsrefvol-v1.kb.io,admissionReviewVersions=v1
-
-// RookCephFSRefVolCustomValidator struct is responsible for validating the RookCephFSRefVol resource
-// when it is created, updated, or deleted.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as this struct is used only for temporary operations and does not need to be deeply copied.
-type RookCephFSRefVolCustomValidator struct {
-	//TODO(user): Add more fields as needed for validation
-}
+type RookCephFSRefVolCustomValidator struct{}
 
 var _ webhook.CustomValidator = &RookCephFSRefVolCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type RookCephFSRefVol.
+// ValidateCreate validates the RookCephFSRefVol resource upon creation.
 func (v *RookCephFSRefVolCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	rookcephfsrefvol, ok := obj.(*operatorv1.RookCephFSRefVol)
 	if !ok {
 		return nil, fmt.Errorf("expected a RookCephFSRefVol object but got %T", obj)
 	}
+
 	rookcephfsrefvollog.Info("Validation for RookCephFSRefVol upon creation", "name", rookcephfsrefvol.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
+	// Example: Ensure CephFsUserSecretName is not empty
+	if rookcephfsrefvol.Spec.CephFsUserSecretName == "" {
+		return nil, fmt.Errorf("CephFsUserSecretName cannot be empty")
+	}
 
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type RookCephFSRefVol.
+// ValidateUpdate blocks updates to the Spec of the RookCephFSRefVol resource but allows updates to metadata and status.
 func (v *RookCephFSRefVolCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	rookcephfsrefvol, ok := newObj.(*operatorv1.RookCephFSRefVol)
+	rookcephfsrefvolNew, ok := newObj.(*operatorv1.RookCephFSRefVol)
 	if !ok {
 		return nil, fmt.Errorf("expected a RookCephFSRefVol object for the newObj but got %T", newObj)
 	}
-	rookcephfsrefvollog.Info("Validation for RookCephFSRefVol upon update", "name", rookcephfsrefvol.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
+	rookcephfsrefvolOld, ok := oldObj.(*operatorv1.RookCephFSRefVol)
+	if !ok {
+		return nil, fmt.Errorf("expected a RookCephFSRefVol object for the oldObj but got %T", oldObj)
+	}
 
+	rookcephfsrefvollog.Info("Validation for RookCephFSRefVol upon update", "name", rookcephfsrefvolNew.GetName())
+
+	// Check if the Spec has changed
+	if !isSpecEqual(rookcephfsrefvolOld.Spec, rookcephfsrefvolNew.Spec) {
+		return nil, fmt.Errorf("updates to Spec are not allowed for RookCephFSRefVol resources")
+	}
+
+	// Allow other updates (e.g., annotations or status)
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type RookCephFSRefVol.
+// ValidateDelete validates the RookCephFSRefVol resource upon deletion.
 func (v *RookCephFSRefVolCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	rookcephfsrefvol, ok := obj.(*operatorv1.RookCephFSRefVol)
 	if !ok {
 		return nil, fmt.Errorf("expected a RookCephFSRefVol object but got %T", obj)
 	}
+
 	rookcephfsrefvollog.Info("Validation for RookCephFSRefVol upon deletion", "name", rookcephfsrefvol.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
+	// Access the DeleteOptions from the request context (if available)
+	// deleteOptions, ok := admission.DeleteOptionsFrom(ctx)
+	// if !ok {
+	// 	return nil, fmt.Errorf("delete options not found")
+	// }
+
+	// // Check PropagationPolicy
+	// if deleteOptions.PropagationPolicy == nil || *deleteOptions.PropagationPolicy != metav1.DeletePropagationForeground {
+	// 	return nil, fmt.Errorf("PropagationPolicy must be set to Foreground for deletion")
+	// }
 
 	return nil, nil
+}
+
+// isSpecEqual compares the Spec fields of two RookCephFSRefVol objects.
+func isSpecEqual(oldSpec, newSpec operatorv1.RookCephFSRefVolSpec) bool {
+	return reflect.DeepEqual(oldSpec, newSpec)
 }

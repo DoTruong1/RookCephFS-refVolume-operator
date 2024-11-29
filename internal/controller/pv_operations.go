@@ -14,42 +14,31 @@ import (
 func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log logr.Logger, rookcephfsrefvol *operatorv1.RookCephFSRefVol, parentPV *corev1.PersistentVolume, sourcePVC *corev1.PersistentVolumeClaim) error {
 	if parentPV.DeletionTimestamp.IsZero() {
 		desiredPv := r.buildRefVolumeManifest(parentPV, rookcephfsrefvol)
-		if err := r.ownObject(rookcephfsrefvol, desiredPv); err != nil {
-			log.Error(err, "Error setting controller reference")
-			return err
-		}
+		controllerutil.SetControllerReference(rookcephfsrefvol, desiredPv, r.Scheme)
 		if err := r.Create(ctx, desiredPv); err != nil {
 			log.Error(err, "Error creating RefVolume")
-			rookcephfsrefvol.Status.State = operatorv1.Missing
-			return r.Status().Update(ctx, rookcephfsrefvol)
+			rookcephfsrefvol.Status.State = operatorv1.Conflict
+			return err
+		}
+
+		if err := r.createDestinationPVC(ctx, log, rookcephfsrefvol, sourcePVC, desiredPv.Name); err != nil {
+			log.Error(err, "Error creating Destination PV")
+			rookcephfsrefvol.Status.State = operatorv1.Conflict
+			return err
 		}
 		rookcephfsrefvol.Status.State = operatorv1.Bounded
 		rookcephfsrefvol.Status.Parent = parentPV.GetName()
 		rookcephfsrefvol.Status.Children = desiredPv.Name
 
-		// Cập nhật annotations và finalizers cho parent PV và PVC nếu cần
-		// ...
-
 		log.Info("Successfully created refVolume", "desiredPv", desiredPv.Name)
 
-		if err := r.Update(ctx, parentPV); err != nil {
-			log.Error(err, "Error updating parent PV annotations")
-			return err
-		}
-
-		if err := r.Update(ctx, sourcePVC); err != nil {
-			log.Error(err, "Error updating parent PVC annotations")
-			return err
-		}
-
-		r.Status().Update(ctx, rookcephfsrefvol)
 		return nil
 	}
 	log.Info("Parent is being deleted, not creating ref volume")
-	rookcephfsrefvol.Status.State = operatorv1.ParentDeleting
+	rookcephfsrefvol.Status.State = operatorv1.IsDeleting
 	rookcephfsrefvol.Status.Parent = parentPV.GetName()
 	rookcephfsrefvol.Status.Children = ""
-	return r.Status().Update(ctx, rookcephfsrefvol)
+	return nil
 }
 
 func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.PersistentVolume, rookcephfsrefvol *operatorv1.RookCephFSRefVol) *corev1.PersistentVolume {
@@ -62,7 +51,6 @@ func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.P
 		Spec: *originalPv.Spec.DeepCopy(),
 	}
 
-	// Điều chỉnh Spec của PV nếu cần
 	if newPV.Spec.PersistentVolumeSource.CSI != nil {
 		newPV.Spec.ClaimRef = nil
 		newPV.Spec.PersistentVolumeSource.CSI.NodeStageSecretRef.Name = rookcephfsrefvol.Spec.CephFsUserSecretName
@@ -72,7 +60,7 @@ func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.P
 		newPV.Spec.PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimRetain
 	}
 
-	newPV.ObjectMeta.Annotations = annotationMapping(originalPv, rookcephfsrefvol)
+	newPV.ObjectMeta.Annotations = annotationMapping(originalPv, rookcephfsrefvol, false)
 	for k, v := range originalPv.GetLabels() {
 		newPV.ObjectMeta.Labels[k] = v
 	}

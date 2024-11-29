@@ -16,26 +16,25 @@ func isOnDeletingState(rookcephfsrefvol *operatorv1.RookCephFSRefVol, parentPV *
 	return (isRookCephRefVolDeleting || isDataSourcePvcDeleting || isDataSourcePvDeleting)
 }
 
-func (r *RookCephFSRefVolReconciler) updateState(ctx context.Context, log logr.Logger, rookcephfsrefvol *operatorv1.RookCephFSRefVol, parentPV *corev1.PersistentVolume, sourcePVC *corev1.PersistentVolumeClaim) {
-	updatedState := rookcephfsrefvol.Status.State
+// func isConfict(ookcephfsrefvol *operatorv1.RookCephFSRefVol, parentPV *corev1.PersistentVolume, sourcePVC *corev1.PersistentVolumeClaim) bool {
+
+// }
+
+func (r *RookCephFSRefVolReconciler) updateState(ctx context.Context, log logr.Logger, rookcephfsrefvol *operatorv1.RookCephFSRefVol, datasourcetPv *corev1.PersistentVolume, datasourcePvc *corev1.PersistentVolumeClaim) {
 
 	switch {
-	case isOnDeletingState(rookcephfsrefvol, parentPV, sourcePVC):
-		updatedState = operatorv1.IsDeleting
-	case parentPV.Name == "" || sourcePVC.Name == "":
-		log.Info("Parent PV or PVC not found; setting state to ParentNotFound")
-		updatedState = operatorv1.ParentNotFound
+	case datasourcetPv == nil || datasourcePvc == nil:
+		log.Info("Parent PV or PVC not found; setting state to Conflict")
+		rookcephfsrefvol.Status.State = operatorv1.Conflict
+	case isOnDeletingState(rookcephfsrefvol, datasourcetPv, datasourcePvc):
+		log.Info("Deleting event; marking state as Deleting")
+		rookcephfsrefvol.Status.State = operatorv1.IsDeleting
+
 	case rookcephfsrefvol.Status.Children == "":
 		log.Info("No PV is associated with RookCephFSRefVol; marking state as Missing")
-		updatedState = operatorv1.Missing
+		rookcephfsrefvol.Status.State = operatorv1.Missing
 	default:
-		updatedState = operatorv1.Bounded
-	}
-
-	if rookcephfsrefvol.Status.State != updatedState {
-		rookcephfsrefvol.Status.State = updatedState
-		if err := r.Status().Update(ctx, rookcephfsrefvol); err != nil {
-			log.Error(err, "Failed to update status", "new state", updatedState)
-		}
+		log.Info("PV is associated with RookCephFSRefVol; marking state as Bounded")
+		rookcephfsrefvol.Status.State = operatorv1.Bounded
 	}
 }
