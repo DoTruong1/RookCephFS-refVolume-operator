@@ -81,12 +81,12 @@ func (r *RookCephFSRefVolReconciler) createDestinationPVC(ctx context.Context, l
 	destPVC := &corev1.PersistentVolumeClaim{}
 	isExist, namespaceErr := r.isNamespaceExists(ctx, destinationPvcInfo.Namespace)
 	if !isExist {
-		if namespaceErr != nil {
-			log.Error(namespaceErr, "Error when checking if namespace is existed")
+		if namespaceErr != nil && !apierrors.IsNotFound(namespaceErr) {
+			log.Info("Error when checking if namespace is existed")
 			return namespaceErr
 		}
 		log.Info("Namespace: ", destinationPvcInfo.Namespace, "is not exist, not creating destination PVC")
-		return nil
+		return namespaceErr
 	}
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: destinationPvcInfo.Namespace,

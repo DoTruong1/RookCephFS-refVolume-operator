@@ -34,21 +34,24 @@ func (r *RookCephFSRefVolReconciler) writeInstance(ctx context.Context, log logr
 		// 	log.Error(err, "failed to fetch latest object before updating status")
 		// 	return err
 		// }
-		// log.Info("Updating CRs status")
-		// if err := r.Status().Update(ctx, rookcephfsrefvol); err != nil {
-		// 	log.Error(err, "while updating status on apiserver")
-		// 	return err
-		// }
+
 		// if err := r.Get(ctx, client.ObjectKey{Name: rookcephfsrefvol.Name, Namespace: rookcephfsrefvol.Namespace}, rookcephfsrefvol); err != nil {
 		// 	log.Error(err, "failed to fetch latest object before updating status")
 		// 	return err
 		// }
-		if err := r.Update(ctx, rookcephfsrefvol); err != nil {
-			log.Error(err, "while updating on apiserver")
-			return err
+		if !rookcephfsrefvol.DeletionTimestamp.IsZero() {
+			if err := r.Update(ctx, rookcephfsrefvol); err != nil {
+				log.Error(err, "while updating on apiserver")
+				return err
+			}
+		} else {
+			log.Info("Updating CRs status")
+			if err := r.Status().Update(ctx, rookcephfsrefvol); err != nil {
+				log.Error(err, "while updating status on apiserver")
+				return err
+			}
 		}
 		// if prevState.State != rookcephfsrefvol.Status.State {
-
 		// }
 
 	}
@@ -107,7 +110,7 @@ func (r *RookCephFSRefVolReconciler) isNamespaceExists(ctx context.Context, name
 		if errors.IsNotFound(err) {
 			// Namespace không tồn tại
 			logger.Info(fmt.Sprintf("Namespace '%s' does not exist.", namespace))
-			return false, nil
+			return false, err
 		}
 		// Lỗi khác
 		logger.Error(err, "Failed to check namespace existence")

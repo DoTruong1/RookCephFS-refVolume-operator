@@ -61,6 +61,7 @@ var (
 // +kubebuilder:rbac:groups="",resources=persistentvolumes/status,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims/status,verbs=get
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -154,7 +155,7 @@ func (r *RookCephFSRefVolReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		log.Info("Start creating RefVol")
 		if err := r.createRefVolume(ctx, log, rookcephfsrefvol, dataSourcePv, dataSourcePVC); err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, r.writeInstance(ctx, log, rookcephfsrefvol)
 		}
 
 	}
@@ -192,17 +193,6 @@ func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	); err != nil {
 		return fmt.Errorf("failed to index metadata.namespace: %w", err)
 	}
-	// if err := mgr.GetFieldIndexer().IndexField(context.Background(), &operatorv1.RookCephFSRefVol{}, crIndexKey, func(rawObj client.Object) []string {
-	// 	rookCephFSRefVol := rawObj.(*operatorv1.RookCephFSRefVol)
-
-	// 	if rookCephFSRefVol.Status.Parent != "" {
-	// 		return []string{rookCephFSRefVol.Status.Parent}
-	// 	}
-	// 	// If state is empty, return nil so it won't be indexed
-	// 	return nil
-	// }); err != nil {
-	// 	return err
-	// }
 	updatePred := predicate.Funcs{
 		// Only allow updates when the spec.size of the Busybox resource changes
 		UpdateFunc: func(e event.UpdateEvent) bool {

@@ -1,4 +1,3 @@
-
 ---
 apiVersion: operator.dotv.home.arpa/v1
 kind: RookCephFSRefVol
@@ -13,63 +12,60 @@ spec:
       createIfNotExists: true
       storageClassName: rook-cephfs
       accessModes:
-      - ReadWriteOnce
+        - ReadWriteOnce
       resources:
         requests:
-          storage: 1Gi 
+          storage: 1Gi
   destination:
     pvcInfo:
-      pvcName: cephfs-pvc-9b9j9-2
+      pvcName: cephfs-pvc-namespace
       namespace: others
   cephFsUserSecretName: rook-csi-cephfs-node-user
+# ---
+# apiVersion: operator.dotv.home.arpa/v1
+# kind: RookCephFSRefVol
+# metadata:
+#   name: refvol-2
+# spec:
+#   datasource:
+#     pvcInfo:
+#       pvcName: cephfs-pvc-9b9j9
+#       namespace: default
+#     pvcSpec:
+#       createIfNotExists: true
+#       storageClassName: rook-cephfs
+#       accessModes:
+#         - ReadWriteOnce
+#       resources:
+#         requests:
+#           storage: 1Gi
+#   destination:
+#     pvcInfo:
+#       pvcName: cephfs-pvc-9b9j9-2
+#       namespace: other2
+#   cephFsUserSecretName: rook-csi-cephfs-node-user
+# ---
 
----
-apiVersion: operator.dotv.home.arpa/v1
-kind: RookCephFSRefVol
-metadata:
-  name: refvol-2
-spec:
-  datasource:
-    pvcInfo:
-      pvcName: cephfs-pvc-9b9j9
-      namespace: default
-    pvcSpec:
-      createIfNotExists: true
-      storageClassName: rook-cephfs
-      accessModes:
-      - ReadWriteOnce
-      resources:
-        requests:
-          storage: 1Gi 
-  destination:
-    pvcInfo:
-      pvcName: cephfs-pvc-9b9j9-2
-      namespace: other2
-  cephFsUserSecretName: rook-csi-cephfs-node-user
----
-
----
-apiVersion: operator.dotv.home.arpa/v1
-kind: RookCephFSRefVol
-metadata:
-  name: refvol-3
-spec:
-  datasource:
-    pvcInfo:
-      pvcName: cephfs-pvc-9b9j9
-      namespace: default
-    pvcSpec:
-      createIfNotExists: true
-      storageClassName: rook-cephfs
-      accessModes:
-      - ReadWriteOnce
-      resources:
-        requests:
-          storage: 1Gi 
-  destination:
-    pvcInfo:
-      pvcName: cephfs-pvc-9b9j9-2
-      namespace: other3
-  cephFsUserSecretName: rook-csi-cephfs-node-user
-
-
+# ---
+# apiVersion: operator.dotv.home.arpa/v1
+# kind: RookCephFSRefVol
+# metadata:
+#   name: refvol-3
+# spec:
+#   datasource:
+#     pvcInfo:
+#       pvcName: cephfs-pvc-9b9j9
+#       namespace: default
+#     pvcSpec:
+#       createIfNotExists: true
+#       storageClassName: rook-cephfs
+#       accessModes:
+#         - ReadWriteOnce
+#       resources:
+#         requests:
+#           storage: 1Gi
+#   destination:
+#     pvcInfo:
+#       pvcName: cephfs-pvc-9b9j9-2
+#       namespace: other3
+#   cephFsUserSecretName: rook-csi-cephfs-node-user

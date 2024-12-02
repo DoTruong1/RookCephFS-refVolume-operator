@@ -14,6 +14,13 @@ import (
 func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log logr.Logger, rookcephfsrefvol *operatorv1.RookCephFSRefVol, parentPV *corev1.PersistentVolume, sourcePVC *corev1.PersistentVolumeClaim) error {
 	if parentPV.DeletionTimestamp.IsZero() {
 		desiredPv := r.buildRefVolumeManifest(parentPV, rookcephfsrefvol)
+
+		if err := r.createDestinationPVC(ctx, log, rookcephfsrefvol, sourcePVC, desiredPv.Name); err != nil {
+			// log.Info("Namespace: ", rookcephfsrefvol.Spec.Destination.PvcInfo.Namespace, "is not exist, not creating RefVol PVC")
+			rookcephfsrefvol.Status.State = operatorv1.Conflict
+			return err
+		}
+
 		controllerutil.SetControllerReference(rookcephfsrefvol, desiredPv, r.Scheme)
 		if err := r.Create(ctx, desiredPv); err != nil {
 			log.Error(err, "Error creating RefVolume")
@@ -21,11 +28,6 @@ func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log lo
 			return err
 		}
 
-		if err := r.createDestinationPVC(ctx, log, rookcephfsrefvol, sourcePVC, desiredPv.Name); err != nil {
-			log.Error(err, "Error creating Destination PV")
-			rookcephfsrefvol.Status.State = operatorv1.Conflict
-			return err
-		}
 		rookcephfsrefvol.Status.State = operatorv1.Bounded
 		rookcephfsrefvol.Status.Parent = parentPV.GetName()
 		rookcephfsrefvol.Status.Children = desiredPv.Name
@@ -42,6 +44,7 @@ func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log lo
 }
 
 func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.PersistentVolume, rookcephfsrefvol *operatorv1.RookCephFSRefVol) *corev1.PersistentVolume {
+
 	newPV := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: rookcephfsrefvol.Name + "-pv-",
