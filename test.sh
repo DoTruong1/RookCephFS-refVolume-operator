@@ -4,7 +4,6 @@ for i in {1..5}; do
   namespace="namespace${i}"
   kubectl create namespace $namespace
 
-  # Define RookCephFSRefVol YAML with the correct namespace and pvcName
   cat <<EOF | kubectl apply -f -
 apiVersion: operator.dotv.home.arpa/v1
 kind: RookCephFSRefVol

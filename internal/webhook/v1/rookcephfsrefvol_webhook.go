@@ -92,6 +92,7 @@ func (v *RookCephFSRefVolCustomValidator) ValidateCreate(ctx context.Context, ob
 }
 
 // ValidateUpdate blocks updates to the Spec of the RookCephFSRefVol resource but allows updates to metadata and status.
+// ValidateUpdate allows updates to metadata, finalizers, and status, but blocks updates to the Spec of the RookCephFSRefVol resource.
 func (v *RookCephFSRefVolCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	rookcephfsrefvolNew, ok := newObj.(*operatorv1.RookCephFSRefVol)
 	if !ok {
@@ -105,12 +106,12 @@ func (v *RookCephFSRefVolCustomValidator) ValidateUpdate(ctx context.Context, ol
 
 	rookcephfsrefvollog.Info("Validation for RookCephFSRefVol upon update", "name", rookcephfsrefvolNew.GetName())
 
-	// Check if the Spec has changed
-	if !isSpecEqual(rookcephfsrefvolOld.Spec, rookcephfsrefvolNew.Spec) {
+	// Check if Spec has changed, if so reject the update
+	if !reflect.DeepEqual(rookcephfsrefvolOld.Spec, rookcephfsrefvolNew.Spec) {
 		return nil, fmt.Errorf("updates to Spec are not allowed for RookCephFSRefVol resources")
 	}
+	rookcephfsrefvollog.Info("Allow update status", "name", rookcephfsrefvolNew.GetName())
 
-	// Allow other updates (e.g., annotations or status)
 	return nil, nil
 }
 
@@ -123,21 +124,5 @@ func (v *RookCephFSRefVolCustomValidator) ValidateDelete(ctx context.Context, ob
 
 	rookcephfsrefvollog.Info("Validation for RookCephFSRefVol upon deletion", "name", rookcephfsrefvol.GetName())
 
-	// Access the DeleteOptions from the request context (if available)
-	// deleteOptions, ok := admission.DeleteOptionsFrom(ctx)
-	// if !ok {
-	// 	return nil, fmt.Errorf("delete options not found")
-	// }
-
-	// // Check PropagationPolicy
-	// if deleteOptions.PropagationPolicy == nil || *deleteOptions.PropagationPolicy != metav1.DeletePropagationForeground {
-	// 	return nil, fmt.Errorf("PropagationPolicy must be set to Foreground for deletion")
-	// }
-
 	return nil, nil
-}
-
-// isSpecEqual compares the Spec fields of two RookCephFSRefVol objects.
-func isSpecEqual(oldSpec, newSpec operatorv1.RookCephFSRefVolSpec) bool {
-	return reflect.DeepEqual(oldSpec, newSpec)
 }

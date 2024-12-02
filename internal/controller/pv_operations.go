@@ -12,18 +12,18 @@ import (
 )
 
 func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log logr.Logger, rookcephfsrefvol *operatorv1.RookCephFSRefVol, parentPV *corev1.PersistentVolume, sourcePVC *corev1.PersistentVolumeClaim) error {
-	if parentPV.DeletionTimestamp.IsZero() {
+	isExist, nsErr := r.isNamespaceExists(ctx, rookcephfsrefvol.Spec.Destination.PvcInfo.Namespace)
+	if isExist == true {
 		desiredPv := r.buildRefVolumeManifest(parentPV, rookcephfsrefvol)
-
-		if err := r.createDestinationPVC(ctx, log, rookcephfsrefvol, sourcePVC, desiredPv.Name); err != nil {
-			// log.Info("Namespace: ", rookcephfsrefvol.Spec.Destination.PvcInfo.Namespace, "is not exist, not creating RefVol PVC")
-			rookcephfsrefvol.Status.State = operatorv1.Conflict
-			return err
-		}
-
 		controllerutil.SetControllerReference(rookcephfsrefvol, desiredPv, r.Scheme)
 		if err := r.Create(ctx, desiredPv); err != nil {
 			log.Error(err, "Error creating RefVolume")
+			rookcephfsrefvol.Status.State = operatorv1.Conflict
+			return err
+		}
+		if err := r.createDestinationPVC(ctx, log, rookcephfsrefvol, sourcePVC, desiredPv.Name); err != nil {
+			// log.Info("Namespace: ", rookcephfsrefvol.Spec.Destination.PvcInfo.Namespace, "is not exist, not creating RefVol PVC")
+			log.Info("Error while creating destination PVC, set state to Conflict")
 			rookcephfsrefvol.Status.State = operatorv1.Conflict
 			return err
 		}
@@ -36,11 +36,11 @@ func (r *RookCephFSRefVolReconciler) createRefVolume(ctx context.Context, log lo
 
 		return nil
 	}
-	log.Info("Parent is being deleted, not creating ref volume")
-	rookcephfsrefvol.Status.State = operatorv1.IsDeleting
+	// log.Info("")
+	rookcephfsrefvol.Status.State = operatorv1.Conflict
 	rookcephfsrefvol.Status.Parent = parentPV.GetName()
 	rookcephfsrefvol.Status.Children = ""
-	return nil
+	return nsErr
 }
 
 func (r *RookCephFSRefVolReconciler) buildRefVolumeManifest(originalPv *corev1.PersistentVolume, rookcephfsrefvol *operatorv1.RookCephFSRefVol) *corev1.PersistentVolume {

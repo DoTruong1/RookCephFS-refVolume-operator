@@ -61,7 +61,7 @@ func (r *RookCephFSRefVolReconciler) shouldRemoveFinalizer(ctx context.Context, 
 
 	case operatorv1.Conflict:
 		log.Info("The Crs is in Conflict state, safe to remove finalize")
-		return true
+		return false
 	default:
 		// Should never happen, so log an error and let it be deleted.
 		// log.Error(errors.New("illegal state"), "Unknown state", "state", inst.Status.State)

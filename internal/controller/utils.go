@@ -30,15 +30,6 @@ func (r *RookCephFSRefVolReconciler) writeInstance(ctx context.Context, log logr
 			return err
 		}
 	} else {
-		// if err := r.Get(ctx, client.ObjectKey{Name: rookcephfsrefvol.Name, Namespace: rookcephfsrefvol.Namespace}, rookcephfsrefvol); err != nil {
-		// 	log.Error(err, "failed to fetch latest object before updating status")
-		// 	return err
-		// }
-
-		// if err := r.Get(ctx, client.ObjectKey{Name: rookcephfsrefvol.Name, Namespace: rookcephfsrefvol.Namespace}, rookcephfsrefvol); err != nil {
-		// 	log.Error(err, "failed to fetch latest object before updating status")
-		// 	return err
-		// }
 		if !rookcephfsrefvol.DeletionTimestamp.IsZero() {
 			if err := r.Update(ctx, rookcephfsrefvol); err != nil {
 				log.Error(err, "while updating on apiserver")
@@ -51,8 +42,6 @@ func (r *RookCephFSRefVolReconciler) writeInstance(ctx context.Context, log logr
 				return err
 			}
 		}
-		// if prevState.State != rookcephfsrefvol.Status.State {
-		// }
 
 	}
 	return nil

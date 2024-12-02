@@ -23,136 +23,135 @@ spec:
     singular: rookcephfsrefvol
   scope: Cluster
   versions:
-    - additionalPrinterColumns:
-        - jsonPath: .status.state
-          name: State
-          type: string
-        - jsonPath: .status.parentPersistentVolume
-          name: Parent
-          type: string
-        - jsonPath: .status.refVolumeName
-          name: Children
-          type: string
-      name: v1
-      schema:
-        openAPIV3Schema:
-          description: RookCephFSRefVol is the Schema for the rookcephfsrefvols API
-          properties:
-            apiVersion:
-              description: |-
-                APIVersion defines the versioned schema of this representation of an object.
-                Servers should convert recognized schemas to the latest internal value, and
-                may reject unrecognized values.
-                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-              type: string
-            kind:
-              description: |-
-                Kind is a string value representing the REST resource this object represents.
-                Servers may infer this from the endpoint the client submits requests to.
-                Cannot be updated.
-                In CamelCase.
-                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-              type: string
-            metadata:
-              type: object
-            spec:
-              properties:
-                cephFsUserSecretName:
-                  type: string
-                datasource:
-                  properties:
-                    pvcInfo:
-                      properties:
-                        namespace:
+  - additionalPrinterColumns:
+    - jsonPath: .status.state
+      name: State
+      type: string
+    - jsonPath: .status.parentPersistentVolume
+      name: Parent
+      type: string
+    - jsonPath: .status.refVolumeName
+      name: Children
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: RookCephFSRefVol is the Schema for the rookcephfsrefvols API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              cephFsUserSecretName:
+                type: string
+              datasource:
+                properties:
+                  pvcInfo:
+                    properties:
+                      namespace:
+                        type: string
+                      pvcName:
+                        type: string
+                    required:
+                    - namespace
+                    - pvcName
+                    type: object
+                  pvcSpec:
+                    properties:
+                      accessModes:
+                        items:
                           type: string
-                        pvcName:
-                          type: string
-                      required:
-                        - namespace
-                        - pvcName
-                      type: object
-                    pvcSpec:
-                      properties:
-                        accessModes:
-                          items:
-                            type: string
-                          type: array
-                        createIfNotExists:
-                          type: boolean
-                        resources:
-                          description:
-                            VolumeResourceRequirements describes the storage
-                            resource requirements for a volume.
-                          properties:
-                            limits:
-                              additionalProperties:
-                                anyOf:
-                                  - type: integer
-                                  - type: string
-                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                x-kubernetes-int-or-string: true
-                              description: |-
-                                Limits describes the maximum amount of compute resources allowed.
-                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-                              type: object
-                            requests:
-                              additionalProperties:
-                                anyOf:
-                                  - type: integer
-                                  - type: string
-                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                x-kubernetes-int-or-string: true
-                              description: |-
-                                Requests describes the minimum amount of compute resources required.
-                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
-                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
-                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-                              type: object
-                          type: object
-                        storageClassName:
-                          type: string
-                      type: object
-                  required:
-                    - pvcInfo
-                    - pvcSpec
-                  type: object
-                destination:
-                  properties:
-                    pvcInfo:
-                      properties:
-                        namespace:
-                          type: string
-                        pvcName:
-                          type: string
-                      required:
-                        - namespace
-                        - pvcName
-                      type: object
-                  required:
-                    - pvcInfo
-                  type: object
-              required:
-                - cephFsUserSecretName
-                - datasource
-                - destination
-              type: object
-            status:
-              properties:
-                parentPersistentVolume:
-                  type: string
-                refVolumeName:
-                  type: string
-                state:
-                  type: string
-              required:
-                - parentPersistentVolume
-                - refVolumeName
-              type: object
-          type: object
-      served: true
-      storage: true
-      subresources:
-        status: {}
+                        type: array
+                      createIfNotExists:
+                        type: boolean
+                      resources:
+                        description: VolumeResourceRequirements describes the storage
+                          resource requirements for a volume.
+                        properties:
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                      storageClassName:
+                        type: string
+                    type: object
+                required:
+                - pvcInfo
+                - pvcSpec
+                type: object
+              destination:
+                properties:
+                  pvcInfo:
+                    properties:
+                      namespace:
+                        type: string
+                      pvcName:
+                        type: string
+                    required:
+                    - namespace
+                    - pvcName
+                    type: object
+                required:
+                - pvcInfo
+                type: object
+            required:
+            - cephFsUserSecretName
+            - datasource
+            - destination
+            type: object
+          status:
+            properties:
+              parentPersistentVolume:
+                type: string
+              refVolumeName:
+                type: string
+              state:
+                type: string
+            required:
+            - parentPersistentVolume
+            - refVolumeName
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -172,125 +171,125 @@ metadata:
   name: rookcephfs-refvolume-operator-leader-election-role
   namespace: rookcephfs-refvolume-operator-system
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - configmaps
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
-      - delete
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
-      - delete
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - create
-      - patch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: rookcephfs-refvolume-operator-manager-role
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - namespaces
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-      - persistentvolumes
-      - persistentvolumes/status
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims/status
-    verbs:
-      - get
-  - apiGroups:
-      - operator.dotv.home.arpa
-    resources:
-      - rookcephfsrefvols
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch
-  - apiGroups:
-      - operator.dotv.home.arpa
-    resources:
-      - rookcephfsrefvols/finalizers
-    verbs:
-      - update
-  - apiGroups:
-      - operator.dotv.home.arpa
-    resources:
-      - rookcephfsrefvols/status
-    verbs:
-      - get
-      - patch
-      - update
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  - persistentvolumes
+  - persistentvolumes/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims/status
+  verbs:
+  - get
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols/status
+  verbs:
+  - get
+  - patch
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: rookcephfs-refvolume-operator-metrics-auth-role
 rules:
-  - apiGroups:
-      - authentication.k8s.io
-    resources:
-      - tokenreviews
-    verbs:
-      - create
-  - apiGroups:
-      - authorization.k8s.io
-    resources:
-      - subjectaccessreviews
-    verbs:
-      - create
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: rookcephfs-refvolume-operator-metrics-reader
 rules:
-  - nonResourceURLs:
-      - /metrics
-    verbs:
-      - get
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -300,24 +299,24 @@ metadata:
     app.kubernetes.io/name: rookcephfs-refvolume-operator
   name: rookcephfs-refvolume-operator-rookcephfsrefvol-editor-role
 rules:
-  - apiGroups:
-      - operator.dotv.home.arpa
-    resources:
-      - rookcephfsrefvols
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch
-  - apiGroups:
-      - operator.dotv.home.arpa
-    resources:
-      - rookcephfsrefvols/status
-    verbs:
-      - get
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols/status
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -327,20 +326,20 @@ metadata:
     app.kubernetes.io/name: rookcephfs-refvolume-operator
   name: rookcephfs-refvolume-operator-rookcephfsrefvol-viewer-role
 rules:
-  - apiGroups:
-      - operator.dotv.home.arpa
-    resources:
-      - rookcephfsrefvols
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - operator.dotv.home.arpa
-    resources:
-      - rookcephfsrefvols/status
-    verbs:
-      - get
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.dotv.home.arpa
+  resources:
+  - rookcephfsrefvols/status
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -355,9 +354,9 @@ roleRef:
   kind: Role
   name: rookcephfs-refvolume-operator-leader-election-role
 subjects:
-  - kind: ServiceAccount
-    name: rookcephfs-refvolume-operator-controller-manager
-    namespace: rookcephfs-refvolume-operator-system
+- kind: ServiceAccount
+  name: rookcephfs-refvolume-operator-controller-manager
+  namespace: rookcephfs-refvolume-operator-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -371,9 +370,9 @@ roleRef:
   kind: ClusterRole
   name: rookcephfs-refvolume-operator-manager-role
 subjects:
-  - kind: ServiceAccount
-    name: rookcephfs-refvolume-operator-controller-manager
-    namespace: rookcephfs-refvolume-operator-system
+- kind: ServiceAccount
+  name: rookcephfs-refvolume-operator-controller-manager
+  namespace: rookcephfs-refvolume-operator-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -384,9 +383,9 @@ roleRef:
   kind: ClusterRole
   name: rookcephfs-refvolume-operator-metrics-auth-role
 subjects:
-  - kind: ServiceAccount
-    name: rookcephfs-refvolume-operator-controller-manager
-    namespace: rookcephfs-refvolume-operator-system
+- kind: ServiceAccount
+  name: rookcephfs-refvolume-operator-controller-manager
+  namespace: rookcephfs-refvolume-operator-system
 ---
 apiVersion: v1
 kind: Service
@@ -399,10 +398,10 @@ metadata:
   namespace: rookcephfs-refvolume-operator-system
 spec:
   ports:
-    - name: https
-      port: 8443
-      protocol: TCP
-      targetPort: 8443
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
   selector:
     control-plane: controller-manager
 ---
@@ -416,9 +415,9 @@ metadata:
   namespace: rookcephfs-refvolume-operator-system
 spec:
   ports:
-    - port: 443
-      protocol: TCP
-      targetPort: 9443
+  - port: 443
+    protocol: TCP
+    targetPort: 9443
   selector:
     control-plane: controller-manager
 ---
@@ -444,55 +443,55 @@ spec:
         control-plane: controller-manager
     spec:
       containers:
-        - args:
-            - --metrics-bind-address=:8443
-            - --leader-elect
-            - --health-probe-bind-address=:8081
-          command:
-            - /manager
-          image: dotruong1910/controller:1.0.0
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 8081
-            initialDelaySeconds: 15
-            periodSeconds: 20
-          name: manager
-          ports:
-            - containerPort: 9443
-              name: webhook-server
-              protocol: TCP
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: 8081
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          resources:
-            limits:
-              cpu: 500m
-              memory: 128Mi
-            requests:
-              cpu: 10m
-              memory: 64Mi
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-          volumeMounts:
-            - mountPath: /tmp/k8s-webhook-server/serving-certs
-              name: cert
-              readOnly: true
+      - args:
+        - --metrics-bind-address=:8443
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        command:
+        - /manager
+        image: dotruong1910/controller:1.0.1
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
       securityContext:
         runAsNonRoot: true
       serviceAccountName: rookcephfs-refvolume-operator-controller-manager
       terminationGracePeriodSeconds: 10
       volumes:
-        - name: cert
-          secret:
-            defaultMode: 420
-            secretName: webhook-server-cert
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: webhook-server-cert
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -508,8 +507,8 @@ metadata:
   namespace: rookcephfs-refvolume-operator-system
 spec:
   dnsNames:
-    - rookcephfs-refvolume-operator-webhook-service.rookcephfs-refvolume-operator-system.svc
-    - rookcephfs-refvolume-operator-webhook-service.rookcephfs-refvolume-operator-system.svc.cluster.local
+  - rookcephfs-refvolume-operator-webhook-service.rookcephfs-refvolume-operator-system.svc
+  - rookcephfs-refvolume-operator-webhook-service.rookcephfs-refvolume-operator-system.svc.cluster.local
   issuerRef:
     kind: Issuer
     name: rookcephfs-refvolume-operator-selfsigned-issuer
@@ -533,26 +532,26 @@ metadata:
     cert-manager.io/inject-ca-from: rookcephfs-refvolume-operator-system/rookcephfs-refvolume-operator-serving-cert
   name: rookcephfs-refvolume-operator-mutating-webhook-configuration
 webhooks:
-  - admissionReviewVersions:
-      - v1
-    clientConfig:
-      service:
-        name: rookcephfs-refvolume-operator-webhook-service
-        namespace: rookcephfs-refvolume-operator-system
-        path: /mutate-operator-dotv-home-arpa-v1-rookcephfsrefvol
-    failurePolicy: Fail
-    name: mrookcephfsrefvol-v1.kb.io
-    rules:
-      - apiGroups:
-          - operator.dotv.home.arpa
-        apiVersions:
-          - v1
-        operations:
-          - CREATE
-          - UPDATE
-        resources:
-          - rookcephfsrefvols
-    sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: rookcephfs-refvolume-operator-webhook-service
+      namespace: rookcephfs-refvolume-operator-system
+      path: /mutate-operator-dotv-home-arpa-v1-rookcephfsrefvol
+  failurePolicy: Fail
+  name: mrookcephfsrefvol-v1.kb.io
+  rules:
+  - apiGroups:
+    - operator.dotv.home.arpa
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - rookcephfsrefvols
+  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -561,24 +560,24 @@ metadata:
     cert-manager.io/inject-ca-from: rookcephfs-refvolume-operator-system/rookcephfs-refvolume-operator-serving-cert
   name: rookcephfs-refvolume-operator-validating-webhook-configuration
 webhooks:
-  - admissionReviewVersions:
-      - v1
-    clientConfig:
-      service:
-        name: rookcephfs-refvolume-operator-webhook-service
-        namespace: rookcephfs-refvolume-operator-system
-        path: /validate-operator-dotv-home-arpa-v1-rookcephfsrefvol
-    failurePolicy: Fail
-    name: vrookcephfsrefvol-v1.kb.io
-    rules:
-      - apiGroups:
-          - operator.dotv.home.arpa
-        apiVersions:
-          - v1
-        operations:
-          - CREATE
-          - UPDATE
-          - DELETE
-        resources:
-          - rookcephfsrefvols
-    sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: rookcephfs-refvolume-operator-webhook-service
+      namespace: rookcephfs-refvolume-operator-system
+      path: /validate-operator-dotv-home-arpa-v1-rookcephfsrefvol
+  failurePolicy: Fail
+  name: vrookcephfsrefvol-v1.kb.io
+  rules:
+  - apiGroups:
+    - operator.dotv.home.arpa
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - rookcephfsrefvols
+  sideEffects: None
