@@ -243,9 +243,9 @@ func (r *RookCephFSRefVolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1.RookCephFSRefVol{}). //specifies the type of resource to watch
-		// Owns(&corev1.PersistentVolume{}).
-		// Owns(&corev1.PersistentVolumeClaim{}).
-		Watches(&corev1.PersistentVolumeClaim{}, handler.EnqueueRequestsFromMapFunc(r.filterParent), builder.WithPredicates(updatePred)).
+		Watches(&corev1.PersistentVolumeClaim{},
+			handler.EnqueueRequestsFromMapFunc(r.filterParent),
+			builder.WithPredicates(updatePred)).
 		Complete(r)
 }
 
