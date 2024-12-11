@@ -449,7 +449,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: dotruong1910/controller:1.0.1
+        image: dotruong1910/demo:v1
         livenessProbe:
           httpGet:
             path: /healthz
